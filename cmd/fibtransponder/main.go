@@ -8,12 +8,11 @@ import (
 	"os"
 	"sort"
 
-	fibtransponder "github.com/shaoyanji/fibtransponder"
 	"github.com/shaoyanji/fibtransponder/internal/bitrope"
-	"github.com/shaoyanji/fibtransponder/internal/fsvmi"
-	"github.com/shaoyanji/fibtransponder/internal/segautoi"
-	"github.com/shaoyanji/fibtransponder/internal/signal/emded2d"
-	"github.com/shaoyanji/fibtransponder/internal/signal/ftt"
+	"github.com/shaoyanji/fibtransponder/internal/fsvm"
+	"github.com/shaoyanji/fibtransponder/internal/segauto"
+	"github.com/shaoyanji/fibtransponder/internal/signal/embed2d"
+	"github.com/shaoyanji/fibtransponder/internal/signal/fft"
 	"github.com/shaoyanji/fibtransponder/internal/signal/wht"
 )
 
