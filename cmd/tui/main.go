@@ -13,6 +13,7 @@ import (
 	"github.com/shaoyanji/fibtransponder/internal/entropy_estimator"
 	"github.com/shaoyanji/fibtransponder/internal/extension"
 	"github.com/shaoyanji/fibtransponder/internal/fsvm"
+	"github.com/shaoyanji/fibtransponder/internal/image_analyzer" // New import
 	"github.com/shaoyanji/fibtransponder/internal/rosetta"
 	"github.com/shaoyanji/fibtransponder/internal/segauto"
 	"github.com/shaoyanji/fibtransponder/internal/signal"
@@ -163,13 +164,14 @@ func initialModel() model {
 	// Initialize all extensions
 	var extensions []extension.Extension
 	
-	segAutoExt := segauto.New() // SegAuto needs to be instantiated before others might react to its markers
+	segAutoExt := segauto.New() 
 	extensions = append(extensions, segAutoExt)
 
 	extensions = append(extensions, rosetta.New())
 	extensions = append(extensions, signal.NewFeatureExtractor())
 	extensions = append(extensions, typing_analyzer.NewAnalyzer())
 	extensions = append(extensions, entropy_estimator.NewEstimator())
+	extensions = append(extensions, image_analyzer.NewAnalyzer()) // New extension
 
 	return model{
 		fsvmState:   initialFSVMState,

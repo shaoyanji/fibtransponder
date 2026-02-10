@@ -15,6 +15,7 @@ import (
 	"github.com/shaoyanji/fibtransponder/internal/entropy_estimator"
 	"github.com/shaoyanji/fibtransponder/internal/extension"
 	"github.com/shaoyanji/fibtransponder/internal/fsvm"
+	"github.com/shaoyanji/fibtransponder/internal/image_analyzer" // New import
 	"github.com/shaoyanji/fibtransponder/internal/rosetta"
 	"github.com/shaoyanji/fibtransponder/internal/segauto"
 	"github.com/shaoyanji/fibtransponder/internal/signal"
@@ -50,6 +51,7 @@ func NewSession(sessionID string) *SessionState {
 	s.extensions = append(s.extensions, signal.NewFeatureExtractor())
 	s.extensions = append(s.extensions, typing_analyzer.NewAnalyzer())
 	s.extensions = append(s.extensions, entropy_estimator.NewEstimator())
+	s.extensions = append(s.extensions, image_analyzer.NewAnalyzer()) // New extension
 
 	// Initialize outputs
 	s.updateExtensionOutputs(0, fsvm.New(), 0, []fsvm.Event{})

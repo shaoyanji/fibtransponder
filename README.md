@@ -13,7 +13,8 @@ Deliverables in this folder are:
 - a functional Go TUI application that processes and visualizes bitstreams in real-time.
 - an API service providing programmatic access to the state machine.
 - a Go package for core components (`internal/fsvm`, `internal/bitrope`).
-- **Multiple analysis modules (`internal/segauto`, `internal/rosetta`, `internal/signal`, `internal/typing_analyzer`, `internal/entropy_estimator`) implemented as pluggable `extension.Extension`s.**
+- **Multiple analysis modules (`internal/segauto`, `internal/rosetta`, `internal/signal`, `internal/typing_analyzer`, `internal/entropy_estimator`, `internal/image_analyzer`) implemented as pluggable `extension.Extension`s.**
+- **A utility (`internal/image_hilbert`, `cmd/hilbert_gen`) to convert images into bitstreams using Hilbert curve traversal.**
 - **Python reference implementation** (FSVM + bit rope + WHT + 2D embed demo) for comparison and further exploration.
 
 ## Folder structure
@@ -21,6 +22,8 @@ Deliverables in this folder are:
 - `internal/bitrope` — append-only bit rope (immutable blocks)
 - `internal/extension` — defines the `Extension` interface for pluggable analysis modules.
 - `internal/fsvm` — core streaming state machine (dilation, hexagram window, counters)
+- `internal/image_hilbert` — utility to generate bitstreams from images using Hilbert curves.
+- `internal/image_analyzer` — analysis of image patterns from bitstream, now an `Extension`.
 - `internal/render` — bounded-budget rendering strategy (exemplars, summaries)
 - `internal/rosetta` — marker/probe plan (log2/Binet + residues), now an `Extension`.
 - `internal/segauto` — segmentation automaton (NFA), now an `Extension`.
@@ -30,6 +33,7 @@ Deliverables in this folder are:
 - `cmd/fibtransponder` — CLI skeleton (currently not actively developed, TUI/API are primary interfaces)
 - `cmd/tui` — TUI application using `charmbracelet/bubbletea` for real-time bitstream visualization, dynamically loads `Extension`s.
 - `cmd/api` — RESTful API service for programmatic access to the state machine, dynamically loads `Extension`s.
+- `cmd/hilbert_gen` — CLI utility to generate Hilbert curve bitstreams from images.
 
 ## Go toolchain
 The Go code is functional and can be built and run.
@@ -91,6 +95,27 @@ The API service will start on `http://localhost:8080`.
         SESSION_ID="<get-from-create-response>"
         curl http://localhost:8080/api/sessions/$SESSION_ID
         ```
+
+## Image Processing with Hilbert Curves (`cmd/hilbert_gen`)
+
+This utility allows you to convert an image into a bitstream by traversing its pixels along a Hilbert curve. This bitstream can then be fed into the FibTransponder TUI or API for analysis.
+
+**To build the Hilbert curve bitstream generator:**
+
+```bash
+cd ~/.openclaw/workspace/projects/fibtransponder/cmd/hilbert_gen
+go build -o hilbert_gen
+```
+
+**Usage Example (with TUI):**
+
+1.  **Prepare an image:** Ensure you have a square image with dimensions that are powers of 2 (e.g., 32x32, 64x64). Let's assume `my_image.png` is a 32x32 image. The Hilbert order for a 32x32 image is 5 (`2^5 = 32`).
+2.  **Generate bitstream and pipe to TUI:**
+    ```bash
+    cd ~/.openclaw/workspace/projects/fibtransponder
+    ./cmd/hilbert_gen/hilbert_gen my_image.png 5 128 | ./cmd/tui/fibtransponder_tui
+    ```
+    This command generates a bitstream from `my_image.png` (using Hilbert order 5 and a grayscale threshold of 128) and pipes it directly into the FibTransponder TUI for real-time analysis, including the `Image Analysis` extension.
 
 ## Key idea (one paragraph)
 Maintain a streaming measurement transducer with O(1) update cost per input bit: track a small sliding window (“hexagram”, 6 bits), a global dilation counter `r`, and cheap summary probes. When `11` appears, increment `r` (retrospective dilation) rather than rewriting history. Segmentation is allowed and represented symbolically as a regular language over cut/no-cut choices at sparse “candidate markers” (e.g., zero-run power-of-two crossings), enabling unDoSable rendering of a few representative interpretations.
