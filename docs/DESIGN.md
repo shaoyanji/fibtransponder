@@ -56,3 +56,16 @@ Renderer never enumerates all hypotheses. It returns:
 - K exemplars chosen deterministically (lexicographically min/max; min/max cuts; etc.)
 
 If budget exceeded, degrade output, not ingestion.
+
+## G. Architectural Flexibility and Extensibility
+
+A core design principle of the fibtransponder is its modular and extensible architecture. The "Fibonacci State Vector Machine" (FSVM) at its heart acts as a robust, deterministic event source, processing the incoming bitstream and emitting fundamental events like `DILATE` and `MARKER`. This approach ensures that the core state update is always O(1) and free from side effects that might complicate further analysis.
+
+Building upon this stable foundation, various "interpretation layers" can be dynamically attached without modifying the core FSVM. For instance, the Segmentation Automaton (NFA) processes `MARKER` events to symbolically represent segmentation possibilities, providing an unDoSable way to manage ambiguities. Similarly, the newly introduced "Rosetta Layer" demonstrates how `MARKER` events can trigger deeper, application-specific analyses—such as identifying Fibonacci zero-run lengths or specific FSVM window patterns—without burdening the primary bit-processing pipeline.
+
+This clear separation of concerns allows for:
+- **Unbounded extensibility:** New analysis modules can be easily integrated by simply subscribing to FSVM events.
+- **Maintainability:** Core logic remains isolated and simple.
+- **Experimentation:** Different interpretative models (e.g., for various encoding schemes or cryptographic probes) can be developed and tested in parallel.
+
+This flexibility is key to exploring the rich mathematical properties of Fibonacci radix representations in diverse applications, from data compression to secure communication protocols.
