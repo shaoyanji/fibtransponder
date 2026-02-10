@@ -2,13 +2,14 @@ package segauto
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/shaoyanji/fibtransponder/internal/extension"
 	"github.com/shaoyanji/fibtransponder/internal/fsvm"
 )
 
 // State for NFA (bitset over three states)
+type State uint8 // Re-added this definition
+
 const (
 	stGap State = iota // between messages / before start
 	stIn0             // in message, last bit 0

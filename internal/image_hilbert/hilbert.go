@@ -3,7 +3,6 @@ package image_hilbert
 import (
 	"fmt"
 	"image"
-	"image/color"
 	_ "image/jpeg" // Import for JPEG support
 	_ "image/png"  // Import for PNG support
 	"os"

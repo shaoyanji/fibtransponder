@@ -2,7 +2,6 @@ package typing_analyzer
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/shaoyanji/fibtransponder/internal/extension"
 	"github.com/shaoyanji/fibtransponder/internal/fsvm"

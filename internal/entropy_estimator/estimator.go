@@ -3,7 +3,6 @@ package entropy_estimator
 import (
 	"fmt"
 	"math"
-	"strings"
 
 	"github.com/shaoyanji/fibtransponder/internal/extension"
 	"github.com/shaoyanji/fibtransponder/internal/fsvm"
