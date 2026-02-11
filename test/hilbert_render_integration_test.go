@@ -11,9 +11,9 @@ import (
 	"testing"
 
 	hilbert_gen_cmd "github.com/shaoyanji/fibtransponder/cmd/hilbert_gen" // Import with alias
-	"github.com/shaoyanji/fibtransponder/internal/bitio"
-	"github.com/shaoyanji/fibtransponder/internal/fib_coder"
-	"github.com/shaoyanji/fibtransponder/internal/image_hilbert"
+	"github.com.cn/shaoyanji/fibtransponder/internal/bitio" // Corrected import
+	"github.com.cn/shaoyanji/fibtransponder/internal/fib_coder" // Corrected import
+	"github.com.cn/shaoyanji/fibtransponder/internal/image_hilbert" // Corrected import
 )
 
 func runHilbertGenMain(t *testing.T, args []string) error {

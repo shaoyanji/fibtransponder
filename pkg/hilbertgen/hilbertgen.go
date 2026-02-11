@@ -1,7 +1,7 @@
-package main
+package hilbertgen
 
 import (
-	// Removed unused "bytes"
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -10,12 +10,17 @@ import (
 	"strings"
 
 	"github.com/shaoyanji/fibtransponder/internal/fib_coder"
-	"github.com/shaoyanji/fibtransponder/internal/image_hilbert"
-	hilbertgen "github.com/shaoyanji/fibtransponder/pkg/hilbertgen"
+	"github.com/shaoyanji/fibtransponder/internal/image_hilbert" // Corrected import
 )
 
 // ImageHeader structure for compressed image files
-type ImageHeader = hilbertgen.ImageHeader // Use the definition from the library
+type ImageHeader struct {
+	OriginalWidth  uint32
+	OriginalHeight uint32
+	// fib_coder.Encode will write its own 8-byte header for originalLenInBits,
+	// so we don't need to duplicate OriginalBitLen here.
+	// We'll write this header FIRST, then call fib_coder.Encode which will write its own.
+}
 
 // Run executes the main logic of hilbert_gen, allowing it to be called programmatically for testing.
 func Run(args []string) error {
@@ -103,14 +108,10 @@ func Run(args []string) error {
 		return fmt.Errorf("error compressing bitstream: %w", err)
 	}
 
-	fmt.Printf("Successfully compressed image '%s' to '%s'\n", imagePath, outputPath)
-	fmt.Printf("Original Bit Length: %d, Image Dimensions: %dx%d\n", originalBitLen, imgHeader.OriginalWidth, imgHeader.OriginalHeight)
+	// fmt.Printf("Successfully compressed image '%s' to '%s'\n", imagePath, outputPath) // Remove verbose output from library
+	// fmt.Printf("Original Bit Length: %d, Image Dimensions: %dx%d\n", originalBitLen, imgHeader.OriginalWidth, imgHeader.OriginalHeight)
 	return nil
 }
 
-func main() {
-	if err := Run(os.Args); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-}
+// main() is intentionally empty in this library file.
+// The executable will be in cmd/hilbert_gen/main.go

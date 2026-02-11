@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"strings"
+	// Removed unused "io"
+	// Removed unused "strings"
 
 	"github.com/shaoyanji/fibtransponder/internal/fib_coder"
 )

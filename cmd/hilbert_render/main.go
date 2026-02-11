@@ -13,14 +13,11 @@ import (
 	"github.com/shaoyanji/fibtransponder/internal/bitio"
 	"github.com/shaoyanji/fibtransponder/internal/fib_coder"
 	"github.com/shaoyanji/fibtransponder/internal/image_hilbert"
+	hilbertgen "github.com/shaoyanji/fibtransponder/pkg/hilbertgen" // Use the library's ImageHeader
 )
 
 // ImageHeader structure for compressed image files (must match hilbert_gen)
-type ImageHeader struct {
-	OriginalWidth  uint32
-	OriginalHeight uint32
-	// fib_coder.Encode writes its own 8-byte OriginalBitLen header after this.
-}
+type ImageHeader = hilbertgen.ImageHeader
 
 // PixelMsg is sent when a new pixel's bit value is decoded.
 type PixelMsg struct {
@@ -39,6 +36,8 @@ type model struct {
 	done              bool // True when decompression/rendering is complete
 	quit              chan struct{}
 	newPixel          chan PixelMsg // Channel to receive new pixel updates
+	width             int    // Terminal width
+	height            int    // Terminal height
 }
 
 // Init starts the background decompression process.
@@ -139,6 +138,7 @@ func waitForPixel(pixelChan chan PixelMsg) tea.Cmd {
 
 // Update handles messages and updates the model.
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -147,22 +147,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.done = true
 			return m, tea.Quit
 		}
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
 	case PixelMsg:
 		// Update the grid with the new pixel
 		if msg.Y < m.header.OriginalHeight && msg.X < m.header.OriginalWidth {
 			m.grid[msg.Y][msg.X] = pixelToAscii(msg.BitValue)
 		}
 		m.currentRenderedBits++
-		return m, waitForPixel(m.newPixel) // Wait for the next pixel
+		cmd = waitForPixel(m.newPixel) // Wait for the next pixel
 	case decompressionDoneMsg:
 		m.done = true
-		return m, tea.Quit
+		cmd = tea.Quit // Quit after decompression is done and displayed
 	case errMsg:
 		m.err = msg.error
 		m.done = true
-		return m, tea.Quit
+		cmd = tea.Quit // Quit on error
 	}
-	return m, nil
+	return m, cmd
 }
 
 // View renders the model's current state.
@@ -178,10 +181,30 @@ func (m model) View() string {
 	s.WriteString(fmt.Sprintf("Rendering: %s\n", filepath.Base(m.filePath)))
 	s.WriteString(fmt.Sprintf("Dimensions: %dx%d, Bits: %d / %d\n", m.header.OriginalWidth, m.header.OriginalHeight, m.currentRenderedBits, m.maxRenderedBits))
 	
-	// Draw image grid
+	// Calculate scaling factor to fit image into terminal, if needed
+	scaleX := float64(m.width) / float64(m.header.OriginalWidth)
+	scaleY := float64(m.height-4) / float64(m.header.OriginalHeight) // -4 for header/footer text
+	scale := scaleX
+	if scaleY < scaleX {
+		scale = scaleY
+	}
+	if scale < 1.0 {
+		// Only scale down
+		s.WriteString(fmt.Sprintf("Terminal too small, image scaled by %.2f\n", scale))
+	} else {
+		scale = 1.0 // Don't scale up
+	}
+	
 	for y := uint32(0); y < m.header.OriginalHeight; y++ {
+		if float64(y) * scale >= float64(m.height-4) { continue } // Don't render if outside scaled bounds
 		for x := uint32(0); x < m.header.OriginalWidth; x++ {
-			s.WriteRune(m.grid[y][x])
+			if float64(x) * scale >= float64(m.width) { continue } // Don't render if outside scaled bounds
+			
+			// Simple scaling: just pick the top-left pixel of the scaled block
+			displayChar := m.grid[y][x]
+			// We can implement more sophisticated scaling/averaging here if needed
+			
+			s.WriteRune(displayChar)
 		}
 		s.WriteRune('\n')
 	}
@@ -226,9 +249,11 @@ func runHilbertRenderMain(args []string) error {
 		filePath:   filePath,
 		newPixel:   make(chan PixelMsg),
 		quit:       make(chan struct{}),
+		width: 80, // Default terminal width
+		height: 24, // Default terminal height
 	}
 	
-	p := bubbletea.NewProgram(m)
+	p := bubbletea.NewProgram(m, bubbletea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("bubbletea program failed: %w", err)
 	}
