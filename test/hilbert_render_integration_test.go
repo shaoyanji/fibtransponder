@@ -7,14 +7,36 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	hilbert_gen_cmd "github.com/shaoyanji/fibtransponder/cmd/hilbert_gen" // Import with alias
 	"github.com/shaoyanji/fibtransponder/internal/bitio"
 	"github.com/shaoyanji/fibtransponder/internal/fib_coder"
 	"github.com/shaoyanji/fibtransponder/internal/image_hilbert"
-	render_cmd "github.com/shaoyanji/fibtransponder/cmd/hilbert_render" // Import with alias
-	hilbert_gen_cmd "github.com/shaoyanji/fibtransponder/cmd/hilbert_gen" // Import with alias
 )
+
+// Helper to run the main logic of cmd/hilbert_gen programmatically.
+// This requires hilbert_gen to expose its main logic in a testable function.
+func runHilbertGenMain(t *testing.T, args []string) error {
+	// Temporarily redirect os.Stderr to capture any output/errors from hilbert_gen
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	
+	// Execute the Run function from hilbert_gen's package
+	err := hilbert_gen_cmd.Run(args)
+	
+	w.Close()
+	os.Stderr = oldStderr // Restore stderr
+	
+	var stderrOutput bytes.Buffer
+	io.Copy(&stderrOutput, r)
+	if stderrOutput.Len() > 0 {
+		t.Logf("hilbert_gen stderr: %s", stderrOutput.String())
+	}
+	return err
+}
 
 func TestHilbertRenderFullPipeline(t *testing.T) {
 	// 1. Create a dummy image for compression
@@ -24,28 +46,23 @@ func TestHilbertRenderFullPipeline(t *testing.T) {
 	// Define parameters
 	const hilbertOrder = 3 // 2^3 = 8x8 image
 	const binarizationThreshold = 128
-	const imageSize = 1 << hilbertOrder // 8
+	const imageDim = 1 << hilbertOrder // 8 (width and height)
 
 	// 2. Simulate cmd/hilbert_gen to create a compressed .fibimg file
 	compressedFibimgFilePath := filepath.Join(t.TempDir(), "compressed.fibimg")
 
-	// Call hilbert_gen's main logic directly, but capturing output
-	// To do this programmatically, we need a wrapper around hilbert_gen's main func.
-	// For testing, we can extract the logic from hilbert_gen's main.
-	// Let's create a wrapper function in hilbert_gen for testing.
-	
-	// Temporarily redirect os.Args for hilbert_gen
-	oldArgs := os.Args
-	defer func() { os.Args = oldArgs }()
-	os.Args = []string{"hilbert_gen", "-i", pngPath, "-o", compressedFibimgFilePath, "-order", fmt.Sprintf("%d", hilbertOrder), "-threshold", fmt.Sprintf("%d", binarizationThreshold)}
-
-	// Capture stdout/stderr of hilbert_gen if needed, but it prints success message.
-	// For this test, we just want it to create the file.
-	
-	// Re-run hilbert_gen main logic
-	if err := runHilbertGenMain(); err != nil { // This is where we need to call hilbert_gen's main logic
+	// Prepare arguments for hilbert_gen_cmd.Run
+	genArgs := []string{
+		"hilbert_gen", // App name (ignored by Run, but good practice)
+		"-i", pngPath,
+		"-o", compressedFibimgFilePath,
+		"-order", fmt.Sprintf("%d", hilbertOrder),
+		"-threshold", fmt.Sprintf("%d", binarizationThreshold),
+	}
+	if err := runHilbertGenMain(t, genArgs); err != nil {
 		t.Fatalf("hilbert_gen failed: %v", err)
 	}
+	defer os.Remove(compressedFibimgFilePath) // Clean up compressed file
 
 	// 3. Read the compressed .fibimg file to simulate hilbert_render's decompression
 	compressedFile, err := os.Open(compressedFibimgFilePath)
@@ -64,52 +81,57 @@ func TestHilbertRenderFullPipeline(t *testing.T) {
 	}
 
 	// Verify dimensions
-	if originalWidth != imageSize || originalHeight != imageSize {
-		t.Errorf("Header dimensions mismatch. Got %dx%d, want %dx%d", originalWidth, originalHeight, imageSize, imageSize)
+	if originalWidth != imageDim || originalHeight != imageDim {
+		t.Errorf("Header dimensions mismatch. Got %dx%d, want %dx%d", originalWidth, originalHeight, imageDim, imageDim)
 	}
 
 	// Call fib_coder.Decode and capture output
-	var decompressedBuf bytes.Buffer
-	originalLenInBits, err := fib_coder.Decode(compressedFile, &decompressedBuf)
+	// The fib_coder.Decode will read its own 8-byte OriginalBitLen header.
+	// We pass a bytes.Buffer as the output to capture the decompressed bitstream.
+	var decompressedBitBuf bytes.Buffer
+	decodedOriginalBitLen, err := fib_coder.Decode(compressedFile, &decompressedBitBuf)
 	if err != nil {
 		t.Fatalf("fib_coder.Decode failed: %v", err)
 	}
 
+	decompressedBitstream := decompressedBitBuf.String() // BitStringToBytes writes '0's and '1's
+
 	// 4. Verify the decompressed bitstream against the expected bitstream
-	expectedBitstream := GenerateExpectedBitstream(t, pngPath, hilbertOrder, binarizationThreshold)
-	decompressedBitstream := decompressedBuf.String() // BitStringToBytes writes '0's and '1's
-
-	if uint64(len(decompressedBitstream)) != originalLenInBits {
-		t.Errorf("Decompressed bitstream length mismatch. Got %d, want %d", len(decompressedBitstream), originalLenInBits)
+	expectedBitstream, _, _, err := image_hilbert.GenerateBitstream(pngPath, hilbertOrder, binarizationThreshold)
+	if err != nil {
+		t.Fatalf("GenerateExpectedBitstream failed: %v", err)
 	}
+
+	if decodedOriginalBitLen != uint64(len(expectedBitstream)) {
+		t.Errorf("Decoded Original Bit Length mismatch. Got %d, want %d", decodedOriginalBitLen, len(expectedBitstream))
+	}
+
 	if decompressedBitstream != expectedBitstream {
-		t.Errorf("Decompressed bitstream does not match original expected bitstream.\nGot:  %s\nWant: %s", decompressedBitstream, expectedBitstream)
+		// Log detailed difference if failure
+		t.Errorf("Decompressed bitstream does not match original expected bitstream.\nGot len: %d\nWant len: %d\nGot:  %s\nWant: %s\nDiff at: %s",
+			len(decompressedBitstream), len(expectedBitstream), decompressedBitstream, expectedBitstream, findDiffIndex(decompressedBitstream, expectedBitstream))
 	}
 
-	// 5. Simulate rendering (optional, for visual confirmation, but hard to automate)
-	// We've already verified the bitstream is correct, which is the core of lossless.
-	// Progressive rendering is a UI aspect.
-
-	t.Logf("Successfully processed and verified image. Dimensions: %dx%d, Original Bits: %d", originalWidth, originalHeight, originalLenInBits)
+	t.Logf("Successfully processed and verified image. Dimensions: %dx%d, Original Bits: %d", originalWidth, originalHeight, decodedOriginalBitLen)
 }
 
-// runHilbertGenMain is a helper to run the main logic of cmd/hilbert_gen programmatically.
-// This requires hilbert_gen to expose its main logic in a testable function.
-// Temporarily, this will be a placeholder and will need modification to hilbert_gen.
-func runHilbertGenMain() error {
-	// To avoid calling os.Exit(1) directly in main(), we need to wrap its logic.
-	// For now, this is a simplified stub.
-	// In a real scenario, cmd/hilbert_gen should expose a func(args []string) error.
-	
-	// Create temporary files to simulate stdin/stdout if hilbert_gen were to use them
-	// For now, hilbert_gen uses files directly.
-	
-	// Execute the main logic of hilbert_gen
-	// This can be done by copying the relevant parts of hilbert_gen/main.go here
-	// or by refactoring hilbert_gen to export a testable function.
-	
-	// Let's refactor hilbert_gen/main.go to export a testable function.
-	// This will be done in the next step.
-	// For now, return a placeholder error.
-	return fmt.Errorf("hilbert_gen logic needs to be refactored into an exportable function for testing")
+// findDiffIndex finds the first index where two strings differ.
+func findDiffIndex(s1, s2 string) string {
+	minLen := len(s1)
+	if len(s2) < minLen {
+		minLen = len(s2)
+	}
+	for i := 0; i < minLen; i++ {
+		if s1[i] != s2[i] {
+			return fmt.Sprintf("index %d (s1[%c] != s2[%c])", i, s1[i], s2[i])
+		}
+	}
+	if len(s1) != len(s2) {
+		return fmt.Sprintf("length difference (s1 len %d, s2 len %d)", len(s1), len(s2))
+	}
+	return "no difference"
 }
+
+// Ensure createCheckerboardImage is accessible by this package. It should be in test_utils.go.
+// (Not part of this file, just a note for context.)
+// GenerateExpectedBitstream is also in test_utils.go.
