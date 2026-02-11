@@ -16,8 +16,6 @@ import (
 	"github.com/shaoyanji/fibtransponder/internal/image_hilbert"
 )
 
-// Helper to run the main logic of cmd/hilbert_gen programmatically.
-// This requires hilbert_gen to expose its main logic in a testable function.
 func runHilbertGenMain(t *testing.T, args []string) error {
 	// Temporarily redirect os.Stderr to capture any output/errors from hilbert_gen
 	oldStderr := os.Stderr

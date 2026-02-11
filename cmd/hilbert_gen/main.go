@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/shaoyanji/fibtransponder/internal/fib_coder"
-	"github.com/shaoyanji/fibtransponder/internal/image_hilbert" // Corrected import
+	"github.com/shaoyanji/fibtransponder/internal/image_hilbert"
 )
 
 // ImageHeader structure for compressed image files

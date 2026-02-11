@@ -1,6 +1,7 @@
 package test
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -8,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/shaoyanji/fibtransponder/internal/image_hilbert"
 )
 
 // CreateCheckerboardImage creates an 8x8 checkerboard image for testing.

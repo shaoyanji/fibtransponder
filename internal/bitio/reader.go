@@ -1,7 +1,6 @@
 package bitio
 
 import (
-	"fmt"
 	"io"
 )
 
