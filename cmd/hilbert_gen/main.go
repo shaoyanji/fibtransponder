@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"path/filepath" // Added for filepath.Base
+	"path/filepath"
 	"strconv"
 	"strings"
 
