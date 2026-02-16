@@ -1,16 +1,18 @@
 package hilbertgen
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/shaoyanji/fibtransponder/internal/fib_coder"
-	"github.com/shaoyanji/fibtransponder/internal/image_hilbert" // Corrected import
+	"github.com/shaoyanji/fibtransponder/internal/image_hilbert"
 )
 
 // ImageHeader structure for compressed image files
@@ -69,9 +71,19 @@ func Run(args []string) error {
 		return fmt.Errorf("missing required arguments. Use -i, -o, -order, -threshold")
 	}
 
+	// Read image dimensions for custom header
+	imgFile, err := os.Open(imagePath)
+	if err != nil {
+		return fmt.Errorf("failed to open image '%s': %w", imagePath, err)
+	}
+	cfg, _, err := image.DecodeConfig(imgFile)
+	imgFile.Close()
+	if err != nil {
+		return fmt.Errorf("failed to decode image config: %w", err)
+	}
 
 	// 1. Generate bitstream from image
-	bitstreamString, width, height, err := image_hilbert.GenerateBitstream(imagePath, order, uint8(threshold))
+	bitstreamString, err := image_hilbert.GenerateBitstream(imagePath, order, uint8(threshold))
 	if err != nil {
 		return fmt.Errorf("error generating bitstream from image: %w", err)
 	}
@@ -85,8 +97,8 @@ func Run(args []string) error {
 
 	// 3. Write Custom Image Header
 	imgHeader := ImageHeader{
-		OriginalWidth:  width,
-		OriginalHeight: height,
+		OriginalWidth:  uint32(cfg.Width),
+		OriginalHeight: uint32(cfg.Height),
 	}
 	if err := binary.Write(outFile, binary.BigEndian, imgHeader.OriginalWidth); err != nil { // uint32
 		return fmt.Errorf("failed to write image width header: %w", err)
@@ -94,7 +106,7 @@ func Run(args []string) error {
 	if err := binary.Write(outFile, binary.BigEndian, imgHeader.OriginalHeight); err != nil { // uint32
 		return fmt.Errorf("failed to write image height header: %w", err)
 	}
-	
+
 	// fib_coder.Encode will write its own 8-byte OriginalBitLen header.
 	// We just pass it the io.Reader and io.Writer.
 
@@ -102,14 +114,12 @@ func Run(args []string) error {
 	// Create an io.Reader from the generated bitstream string
 	bitstreamReader := strings.NewReader(bitstreamString)
 	originalBitLen := uint64(len(bitstreamString))
-	
+
 	err = fib_coder.Encode(bitstreamReader, outFile, originalBitLen)
 	if err != nil {
 		return fmt.Errorf("error compressing bitstream: %w", err)
 	}
 
-	// fmt.Printf("Successfully compressed image '%s' to '%s'\n", imagePath, outputPath) // Remove verbose output from library
-	// fmt.Printf("Original Bit Length: %d, Image Dimensions: %dx%d\n", originalBitLen, imgHeader.OriginalWidth, imgHeader.OriginalHeight)
 	return nil
 }
 

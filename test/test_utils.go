@@ -1,15 +1,17 @@
 package test
 
 import (
-	"fmt"
+	"bytes"
 	"image"
 	"image/color"
 	"image/jpeg"
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/shaoyanji/fibtransponder/internal/bitio"
 	"github.com/shaoyanji/fibtransponder/internal/image_hilbert"
 )
 
@@ -55,9 +57,24 @@ func CreateCheckerboardImage(t *testing.T, filename string, makePNG bool) string
 // GenerateExpectedBitstream creates an expected Hilbert-ordered bitstream
 // for a given image path, order, and threshold.
 func GenerateExpectedBitstream(t *testing.T, imagePath string, hilbertOrder int, binarizationThreshold uint8) string {
-	bitstream, _, _, err := image_hilbert.GenerateBitstream(imagePath, hilbertOrder, binarizationThreshold)
+	bitstream, err := image_hilbert.GenerateBitstream(imagePath, hilbertOrder, binarizationThreshold)
 	if err != nil {
 		t.Fatalf("GenerateBitstream failed: %v", err)
 	}
 	return bitstream
+}
+
+// PackedBytesToBitString converts packed bit bytes into a "0101..." string for exactly bitLen bits.
+func PackedBytesToBitString(data []byte, bitLen uint64) (string, error) {
+	br := bitio.NewBitReader(bytes.NewReader(data))
+	var sb strings.Builder
+	sb.Grow(int(bitLen))
+	for i := uint64(0); i < bitLen; i++ {
+		b, err := br.ReadBit()
+		if err != nil {
+			return "", err
+		}
+		sb.WriteByte(b)
+	}
+	return sb.String(), nil
 }

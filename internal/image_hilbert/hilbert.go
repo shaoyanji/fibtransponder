@@ -28,6 +28,11 @@ func d2xy(n, d uint32) (x, y uint32) {
 	return
 }
 
+// D2XY exposes Hilbert index-to-coordinate mapping for callers.
+func D2XY(n, d uint32) (x, y uint32) {
+	return d2xy(n, d)
+}
+
 // rot is a helper function for d2xy and xy2d.
 func rot(n, x, y, rx, ry uint32) (uint32, uint32) {
 	if ry == 0 {
