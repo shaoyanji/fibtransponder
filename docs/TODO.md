@@ -8,6 +8,31 @@
 - [ ] Define nil `ClassifierState` contract for `Classify`
 - [ ] Implement predicate semantics for `Revalidate*` (spec-only, no guessing)
 
+## Chore — Codex mechanical-only pass (today)
+- [ ] Run Codex with the mechanical guardrails prompt (spec-to-code only; no semantic invention)
+- [ ] Scope strictly to:
+  - `internal/deltaqueue/types.go`
+  - `internal/deltaqueue/flags.go`
+  - `internal/deltaqueue/stubs.go`
+  - `internal/deltaqueue/spec_conformance_test.go`
+- [ ] Require output summary:
+  1. files changed
+  2. mechanical changes made
+  3. TODO(spec) items left unresolved
+  4. compile issues introduced/fixed
+- [ ] Accept only if:
+  - compile is improved/passing for target package
+  - spec names align with frozen docs
+  - no semantic drift introduced
+- [ ] Ignore for this pass:
+  - `fib_semantic.md`
+  - bridge behavior
+  - promotion logic
+  - performance tuning
+  - "making it smart"
+- [ ] Smallest next action:
+  - Run Codex on those 4 files, then inspect diff before accepting
+
 ## Marker / Rosetta layer
 - Define marker payload (what is checkpointed)
 - Define probe semantics under retrospective dilation `r++`:
