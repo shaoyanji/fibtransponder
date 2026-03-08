@@ -3,8 +3,14 @@ package deltaqueue
 // Classify annotates a CoreDelta with derived hints.
 // TODO(spec): implement allocation-free classifier logic.
 func Classify(core CoreDelta, cls *ClassifierState) DerivedDelta {
-	_ = cls
-	return DerivedDelta{Core: core}
+	out := DerivedDelta{Core: core}
+	if cls == nil {
+		// TODO(spec): nil classifier state contract is not specified.
+		return out
+	}
+	// TODO(spec): constants appendix conformance text expects DerivedDelta.StepsSince.
+	out.StepsSince = cls.StepsSince
+	return out
 }
 
 // RevalidateAdd: item is not currently active in the frontier

@@ -1,6 +1,16 @@
 package deltaqueue
 
 const (
+	// ZobristSeed is frozen by the constants appendix and used as Sketch initial value on reset.
+	ZobristSeed uint64 = 0x9e3779b97f4a7c15
+)
+
+const (
+	// SuppressFor reset assignments from the frozen constants appendix.
+	SuppressForOnStreamDiscontinuity uint8 = 2
+)
+
+const (
 	FlagBitZero                  uint32 = 1 << 0
 	FlagBitOne                   uint32 = 1 << 1
 	FlagStateChanged             uint32 = 1 << 2
