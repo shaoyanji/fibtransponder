@@ -1,5 +1,13 @@
 # TODO
 
+## Runtime delta/queue scaffolding (spec-conformance pass)
+- [x] Align mechanical constants/fields for `internal/deltaqueue/{types,flags,stubs}.go`
+- [x] Add compile-safe stubs without semantic behavior
+- [x] Keep/annotate `TODO(spec)` where frozen docs are ambiguous
+- [ ] Resolve `DerivedDelta.StepsSince` spec mismatch between appendix and queue spec
+- [ ] Define nil `ClassifierState` contract for `Classify`
+- [ ] Implement predicate semantics for `Revalidate*` (spec-only, no guessing)
+
 ## Marker / Rosetta layer
 - Define marker payload (what is checkpointed)
 - Define probe semantics under retrospective dilation `r++`:
