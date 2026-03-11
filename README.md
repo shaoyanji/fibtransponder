@@ -1,128 +1,146 @@
 # fibtransponder
 
-A deterministic, streaming, **Zeckendorf/Fibonacci-radix** transponder experiment with:
+`fibtransponder` is a deterministic streaming primitive for correcting and stabilizing common LLM mistake patterns in flight.
 
-- **Canonical constraint:** Zeckendorf digits over **F2-based indexing** (bit 0 ↔ F2=1) and **no adjacent 1s** in canonical form.
-- **Dilation protocol:** Adjacent `11` in the *observed* stream triggers a **global retrospective dilation event** `r++` interpreted as **virtual zero-stuffing** between all digits (upsample-by-2). This is done **without materializing stuffed zeros**.
-- **Segmentation:** Optional/allowed message segmentation induced by long runs of zeros; treated as an **interpretation layer** (regular-language/NFA), not a mutation.
-- **Markers (future):** “Rosetta stone” checkpoints bridging (a) fib radix legality/rewrites, (b) Binet/log2 magnitude bounds, and (c) modular/binary fingerprints.
+The core idea is simple: instead of paying for another API call whenever generation drifts into a recurring local failure mode, use a bounded local transducer to detect and respond to those patterns as the stream is forming. The project currently explores this through a Fibonacci / Zeckendorf-oriented state machine, streaming signal analysis, and lightweight visual tooling.
 
-## Status
-Deliverables in this folder are:
-- a written spec + design notes (`docs/`)
-- a functional Go TUI application that processes and visualizes bitstreams in real-time.
-- an API service providing programmatic access to the state machine.
-- a Go package for core components (`internal/fsvm`, `internal/bitrope`).
-- **Multiple analysis modules (`internal/segauto`, `internal/rosetta`, `internal/signal`, `internal/typing_analyzer`, `internal/entropy_estimator`, `internal/image_analyzer`) implemented as pluggable `extension.Extension`s.**
-- **A utility (`internal/image_hilbert`, `cmd/hilbert_gen`) to convert images into bitstreams using Hilbert curve traversal.**
-- **Python reference implementation** (FSVM + bit rope + WHT + 2D embed demo) for comparison and further exploration.
+This makes `fibtransponder` part of the same family as schema-first ingress and token-efficient parsing tools: not a bigger model, not another agent hop, but a smaller corrective layer that can run locally, cheaply, and continuously.
 
-## Folder structure
-- `docs/` — specs and design
-- `internal/bitrope` — append-only bit rope (immutable blocks)
-- `internal/extension` — defines the `Extension` interface for pluggable analysis modules.
-- `internal/fsvm` — core streaming state machine (dilation, hexagram window, counters)
-- `internal/image_hilbert` — utility to generate bitstreams from images using Hilbert curves.
-- `internal/image_analyzer` — analysis of image patterns from bitstream, now an `Extension`.
-- `internal/render` — bounded-budget rendering strategy (exemplars, summaries)
-- `internal/rosetta` — marker/probe plan (log2/Binet + residues), now an `Extension`.
-- `internal/segauto` — segmentation automaton (NFA), now an `Extension`.
-- `internal/signal` — applications layer: boolean transport → windowing, transforms (FFT/WHT), decomposition, now an `Extension` with feature extraction.
-- `internal/typing_analyzer` — analysis of typing patterns, now an `Extension`.
-- `internal/entropy_estimator` — bitstream entropy estimation, now an `Extension`.
-- `cmd/fibtransponder` — CLI skeleton (currently not actively developed, TUI/API are primary interfaces)
-- `cmd/tui` — TUI application using `charmbracelet/bubbletea` for real-time bitstream visualization, dynamically loads `Extension`s.
-- `cmd/api` — RESTful API service for programmatic access to the state machine, dynamically loads `Extension`s.
-- `cmd/hilbert_gen` — CLI utility to generate Hilbert curve bitstreams from images.
+## Why it exists
 
-## Go toolchain
-The Go code is functional and can be built and run.
+A lot of LLM systems pay premium cost to fix cheap errors.
 
-### TUI Application (`cmd/tui`)
+Typical pattern:
+- generation drifts
+- a second pass or second model is invoked
+- more context is replayed
+- latency and token cost go up
+- the correction path becomes harder to inspect
 
-The TUI application provides a real-time, interactive visualization of the bitstream processing, FSVM state, and various analysis modules (all `Extension`s). It's built using `charmbracelet/bubbletea`.
+`fibtransponder` explores a different path:
+- keep correction local
+- keep the update rule deterministic
+- keep the execution surface small
+- preserve streaming behavior instead of pausing for another roundtrip
 
-To build and run the TUI application:
+The ambition here is not to replace model judgment. It is to reduce the number of times a predictable local mistake has to be repaired by an expensive remote loop.
+
+## Current shape
+
+Right now this repo is an experimental systems project with three main layers:
+
+1. **Streaming transducer core**
+   - deterministic state updates over a bitstream
+   - Fibonacci / Zeckendorf-oriented rewrite and dilation logic
+   - bounded per-symbol processing
+
+2. **Signal / analysis layer**
+   - streaming probes and decomposition ideas
+   - transform-oriented analysis over windows
+   - exploratory modules for segmentation, signal, entropy, and image-derived streams
+
+3. **Operator surface**
+   - a Go TUI for real-time visualization
+   - an API service for programmatic access
+   - docs/spec work defining the execution model and constraints
+
+## Project status
+
+This is still an active experiment, not a finished product.
+
+What exists today:
+- a substantial written spec and design corpus in `docs/`
+- a working Go codebase with TUI and API entrypoints
+- core streaming/state-machine infrastructure
+- extension-oriented analysis modules
+- tests around compression and integration surfaces
+
+What is still in motion:
+- the exact correction model and strongest use-cases
+- how the Fibonacci-oriented transducer maps onto practical LLM error classes
+- which probes and transforms belong in core vs outer layers
+- how to benchmark the local correction path against ordinary reprompt / second-pass behavior
+
+## Repo layout
+
+- `docs/` — specifications, design notes, benchmarks, applications, and open explorations
+- `internal/fsvm` — core streaming state-machine work
+- `internal/bitrope` — append-only bit storage / streaming substrate
+- `internal/signal` — signal and decomposition layer
+- `internal/segauto` — segmentation automaton experiments
+- `internal/rosetta` — marker and probe experiments
+- `internal/render` — bounded rendering strategy
+- `internal/image_hilbert` / `cmd/hilbert_gen` — image-to-bitstream utilities via Hilbert traversal
+- `cmd/tui` — terminal visualization surface
+- `cmd/api` — API entrypoint
+- `test/` — integration and compression tests
+
+## Key architectural idea
+
+The system treats the stream as something you can shape while it is still forming.
+
+Rather than waiting for a whole output artifact and then repairing it with another model call, the project explores whether a deterministic transducer can:
+- detect recurring local failure patterns
+- preserve correction pressure in flight
+- maintain cheap bounded updates
+- keep the correction path inspectable
+
+That is the real thesis of the repo.
+
+The Fibonacci / Zeckendorf machinery is part of the mechanism, not the entire point.
+
+## Build and run
+
+Run tests from repo root:
 
 ```bash
-cd ~/.openclaw/workspace/projects/fibtransponder/cmd/tui
+go test ./...
+```
+
+### TUI
+
+```bash
+cd cmd/tui
 go build -o fibtransponder_tui
 ./fibtransponder_tui
 ```
 
-You can pipe a stream of '0's and '1's into it, e.g.:
+Example:
+
 ```bash
-echo "010101100101" | ~/.openclaw/workspace/projects/fibtransponder/cmd/tui/fibtransponder_tui
+echo "010101100101" | ./fibtransponder_tui
 ```
 
-### API Service (`cmd/api`)
-
-The API service provides a RESTful interface to interact with the state machine and its analysis modules programmatically. This allows for integration with other applications, automated testing, or building custom frontends.
-
-**To run the API service:**
+### API
 
 ```bash
-cd ~/.openclaw/workspace/projects/fibtransponder/cmd/api
+cd cmd/api
 go build -o fibtransponder_api
 ./fibtransponder_api
 ```
 
-The API service will start on `http://localhost:8080`.
+By default the API listens on `http://localhost:8080`.
 
-**Endpoints:**
+## Suggested reading order
 
-*   **`POST /api/sessions`**: Create a new state machine session.
-    *   **Request:** `{"initial_bits": "0101..."}` (optional)
-    *   **Response:** `{"sessionId": "uuid", "fsvmState": {...}, "extensionOutputs": [...]}`
-    *   **Example:**
-        ```bash
-        curl -X POST http://localhost:8080/api/sessions -H "Content-Type: application/json" -d '{"initial_bits": "01101"}'
-        ```
+If you want the conceptual shape first:
 
-*   **`POST /api/sessions/{session_id}/process`**: Process a sequence of bits for a given session.
-    *   **Request:** `{"bits": "0101..."}`
-    *   **Response:** `{"sessionId": "uuid", "fsvmState": {...}, "extensionOutputs": [...]}` (updated state)
-    *   **Example:**
-        ```bash
-        SESSION_ID="<get-from-create-response>" # e.g., "a1b2c3d4-e5f6-7890-1234-567890abcdef"
-        curl -X POST http://localhost:8080/api/sessions/$SESSION_ID/process -H "Content-Type: application/json" -d '{"bits": "11001"}'
-        ```
+1. `docs/SPEC.md`
+2. `docs/SIGNAL.md`
+3. `docs/DESIGN.md`
+4. `docs/APPLICATIONS.md`
 
-*   **`GET /api/sessions/{session_id}`**: Retrieve the current state and all analysis results for a session.
-    *   **Response:** `{"sessionId": "uuid", "fsvmState": {...}, "extensionOutputs": [...]}`
-    *   **Example:**
-        ```bash
-        SESSION_ID="<get-from-create-response>"
-        curl http://localhost:8080/api/sessions/$SESSION_ID
-        ```
+If you want implementation status and gaps:
 
-## Image Processing with Hilbert Curves (`cmd/hilbert_gen`)
+1. `IMPLEMENTATION_GAPS.md`
+2. `CONFORMANCE_TARGETS.md`
+3. `docs/TODO.md`
 
-This utility allows you to convert an image into a bitstream by traversing its pixels along a Hilbert curve. This bitstream can then be fed into the FibTransponder TUI or API for analysis.
+## What this repo is not
 
-**To build the Hilbert curve bitstream generator:**
+- not a generic LLM wrapper
+- not another agent orchestration layer
+- not a second-pass API repair loop
+- not a finished product claiming solved grounding or universal correction
 
-```bash
-cd ~/.openclaw/workspace/projects/fibtransponder/cmd/hilbert_gen
-go build -o hilbert_gen
-```
-
-**Usage Example (with TUI):**
-
-1.  **Prepare an image:** Ensure you have a square image with dimensions that are powers of 2 (e.g., 32x32, 64x64). Let's assume `my_image.png` is a 32x32 image. The Hilbert order for a 32x32 image is 5 (`2^5 = 32`).
-2.  **Generate bitstream and pipe to TUI:**
-    ```bash
-    cd ~/.openclaw/workspace/projects/fibtransponder
-    ./cmd/hilbert_gen/hilbert_gen my_image.png 5 128 | ./cmd/tui/fibtransponder_tui
-    ```
-    This command generates a bitstream from `my_image.png` (using Hilbert order 5 and a grayscale threshold of 128) and pipes it directly into the FibTransponder TUI for real-time analysis, including the `Image Analysis` extension.
-
-## Key idea (one paragraph)
-Maintain a streaming measurement transducer with O(1) update cost per input bit: track a small sliding window (“hexagram”, 6 bits), a global dilation counter `r`, and cheap summary probes. When `11` appears, increment `r` (retrospective dilation) rather than rewriting history. Segmentation is allowed and represented symbolically as a regular language over cut/no-cut choices at sparse “candidate markers” (e.g., zero-run power-of-two crossings), enabling unDoSable rendering of a few representative interpretations.
-
-To run tests for the Go packages:
-
-```bash
-cd ~/.openclaw/workspace/projects/fibtransponder
-go test ./...
-```
+It is a focused experiment in whether some recurring model errors can be corrected or stabilized locally, with deterministic streaming machinery, before they need to become another expensive model interaction.
