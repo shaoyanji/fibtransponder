@@ -36,6 +36,16 @@ Core state entities:
 
 ---
 
+## Demo
+
+![fibtransponder TUI demo](docs/media/fibtransponder-tui-hero.gif)
+
+> Live view of bounded streaming ingest with rolling state/probe feedback.
+
+If the preview does not render on your surface, open: `docs/media/fibtransponder-tui-hero.gif`
+
+---
+
 ## Quickstart
 
 ### Build + test
@@ -105,7 +115,7 @@ Default listen address: `http://localhost:8080`.
 - [x] Build artifacts removed from version control
 - [x] `go test ./...` passing
 - [ ] Tag first public release
-- [ ] Add screenshot/GIF to showcase TUI flow
+- [~] Add screenshot/GIF to showcase TUI flow (placeholder added at `docs/media/fibtransponder-tui-hero.gif`)
 
 ---
 
