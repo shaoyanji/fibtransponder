@@ -1,81 +1,50 @@
 # fibtransponder
 
+[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev/)
+[![Status](https://img.shields.io/badge/status-draft%20prototype-orange)](#status)
+[![Spec](https://img.shields.io/badge/spec-docs%2FSPEC.md-blue)](docs/SPEC.md)
+
 `fibtransponder` is a Fibonacci-radix streaming transponder prototype.
 
-It ingests an unbounded boolean stream and maintains a deterministic, bounded-work state machine over that stream. The current source of truth is `docs/SPEC.md`.
+It ingests an unbounded boolean stream and maintains a deterministic, bounded-work state machine over that stream.
 
-## Scope (current draft)
+**Source of truth:** `docs/SPEC.md`
 
-The project implements and explores the **measurement-first** model from the spec:
+---
 
-- track adjacency (`11`) and emit retrospective **dilation events**
-- track sparse long-zero markers (`8, 16, 32, ...` by default)
-- maintain a small rolling window for local probes
-- keep ingestion O(1) (or amortized O(1)) per observed bit
+## What it is
 
-Core spec entities:
+A measurement-first stream core that tracks:
+
+- adjacency events (`11`) → retrospective dilation events
+- sparse long-zero markers (`8, 16, 32, ...` by default)
+- a 6-bit rolling local window
+- bounded O(1) (or amortized O(1)) ingest work
+
+Core state entities:
 
 - `r`: global dilation exponent
 - `w`: 6-bit rolling hexagram window
 - `lastBit`: previous observed bit
 - `zeroRun`: current zero-run length
 
-## Canonical representation
+## What it is not
 
-The spec uses Zeckendorf indexing:
+- not a generic LLM wrapper
+- not an orchestration framework
+- not a finished product with closed semantics
 
-- `bit[i] ↔ F_{i+2}`
-- canonical words have **no adjacent 1s**
+---
 
-When `11` is observed, `r` increments and interpretation is retroactively rescaled as if the dilation operator had been applied globally. This is modeled semantically (virtual stuffing), not by materializing inserted zeros.
+## Quickstart
 
-## Segmentation model
-
-There is no mandatory EOF boundary.
-
-Segmentation is an interpretation layer:
-
-- long zero runs suggest candidate cut points
-- cuts are optional, never required
-- candidate points are sparse/deterministic to preserve DoS resistance
-
-Ambiguity is represented as a regular-language view over cut/no-cut choices.
-
-## Safety targets
-
-From the current spec:
-
-- bounded work per input symbol
-- linear memory growth in observed bits (immutable block allocation strategy)
-- budgeted rendering with graceful summaries when over budget
-
-## Repository layout
-
-- `docs/SPEC.md` — authoritative draft spec
-- `docs/DESIGN.md` — implementation architecture notes
-- `docs/SIGNAL.md` — probe/signal decomposition notes
-- `docs/APPLICATIONS.md` — potential downstream use-cases
-- `internal/fsvm` — core streaming state machine
-- `internal/bitrope` — append-only bitstream substrate
-- `internal/signal` — signal/decomposition layer
-- `internal/segauto` — segmentation automaton experiments
-- `internal/rosetta` — marker/probe experiments
-- `internal/render` — bounded rendering
-- `cmd/tui` — terminal UI
-- `cmd/api` — API surface
-- `test/` — integration/compression tests
-
-## Build and test
-
-From repo root:
+### Build + test
 
 ```bash
 go test ./...
 ```
 
-## Run
-
-### TUI
+### Run TUI
 
 ```bash
 cd cmd/tui
@@ -89,7 +58,7 @@ Example:
 echo "010101100101" | ./fibtransponder_tui
 ```
 
-### API
+### Run API
 
 ```bash
 cd cmd/api
@@ -99,8 +68,49 @@ go build -o fibtransponder_api
 
 Default listen address: `http://localhost:8080`.
 
+---
+
+## Spec highlights
+
+- **Indexing:** `bit[i] ↔ F_{i+2}`
+- **Canonical Zeckendorf words:** no adjacent `1`s
+- **Dilation semantics:** when `11` is observed, increment `r` and interpret retroactively as virtual stuffing
+- **Segmentation:** allowed, not forced; sparse candidate boundaries only
+- **Safety:** bounded ingest, linear memory growth, budgeted rendering
+
+---
+
+## Repo layout
+
+- `docs/SPEC.md` — authoritative draft spec
+- `docs/DESIGN.md` — implementation architecture notes
+- `docs/SIGNAL.md` — probe/signal decomposition notes
+- `docs/APPLICATIONS.md` — constrained downstream use-cases
+- `internal/fsvm` — core streaming state machine
+- `internal/bitrope` — append-only bitstream substrate
+- `internal/signal` — signal/decomposition layer
+- `internal/segauto` — segmentation automaton experiments
+- `internal/rosetta` — marker/probe experiments
+- `internal/render` — bounded rendering
+- `cmd/tui` — terminal UI
+- `cmd/api` — API surface
+- `test/` — tests (legacy suite is build-tagged)
+
+---
+
+## Publish checklist
+
+- [x] README aligned to `docs/SPEC.md`
+- [x] Core docs (`SPEC`, `DESIGN`, `APPLICATIONS`) internally consistent
+- [x] Build artifacts removed from version control
+- [x] `go test ./...` passing
+- [ ] Tag first public release
+- [ ] Add screenshot/GIF to showcase TUI flow
+
+---
+
 ## Status
 
-This repository is a draft implementation + research surface around `docs/SPEC.md`.
+Draft implementation + research surface around `docs/SPEC.md`.
 
-Open questions are tracked in the spec (semantic value under dilation, probe semantics under retroactive scaling, and marker equations).
+Open semantic questions remain explicit in the spec (e.g. exact `N(r)` meaning, dilated-probe definitions, marker equations).
