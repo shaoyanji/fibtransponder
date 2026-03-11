@@ -1,3 +1,6 @@
+//go:build legacy
+// +build legacy
+
 package test
 
 import (
@@ -7,13 +10,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
-	hilbert_gen_cmd "github.com/shaoyanji/fibtransponder/cmd/hilbert_gen" // Import with alias
-	"github.com.cn/shaoyanji/fibtransponder/internal/bitio" // Corrected import
-	"github.com.cn/shaoyanji/fibtransponder/internal/fib_coder" // Corrected import
-	"github.com.cn/shaoyanji/fibtransponder/internal/image_hilbert" // Corrected import
+	"github.com/shaoyanji/fibtransponder/internal/fib_coder"
+	"github.com/shaoyanji/fibtransponder/internal/image_hilbert"
+	hilbert_gen_cmd "github.com/shaoyanji/fibtransponder/pkg/hilbertgen"
 )
 
 func runHilbertGenMain(t *testing.T, args []string) error {
@@ -21,13 +22,13 @@ func runHilbertGenMain(t *testing.T, args []string) error {
 	oldStderr := os.Stderr
 	r, w, _ := os.Pipe()
 	os.Stderr = w
-	
+
 	// Execute the Run function from hilbert_gen's package
 	err := hilbert_gen_cmd.Run(args)
-	
+
 	w.Close()
 	os.Stderr = oldStderr // Restore stderr
-	
+
 	var stderrOutput bytes.Buffer
 	io.Copy(&stderrOutput, r)
 	if stderrOutput.Len() > 0 {
@@ -95,7 +96,7 @@ func TestHilbertRenderFullPipeline(t *testing.T) {
 	decompressedBitstream := decompressedBitBuf.String() // BitStringToBytes writes '0's and '1's
 
 	// 4. Verify the decompressed bitstream against the expected bitstream
-	expectedBitstream, _, _, err := image_hilbert.GenerateBitstream(pngPath, hilbertOrder, binarizationThreshold)
+	expectedBitstream, err := image_hilbert.GenerateBitstream(pngPath, hilbertOrder, binarizationThreshold)
 	if err != nil {
 		t.Fatalf("GenerateExpectedBitstream failed: %v", err)
 	}

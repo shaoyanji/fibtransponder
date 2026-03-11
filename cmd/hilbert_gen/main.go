@@ -64,12 +64,13 @@ func Run(args []string) error {
 		return fmt.Errorf("missing required arguments. Use -i, -o, -order, -threshold")
 	}
 
-
 	// 1. Generate bitstream from image
-	bitstreamString, width, height, err := image_hilbert.GenerateBitstream(imagePath, order, uint8(threshold))
+	bitstreamString, err := image_hilbert.GenerateBitstream(imagePath, order, uint8(threshold))
 	if err != nil {
 		return fmt.Errorf("error generating bitstream from image: %w", err)
 	}
+	width := uint32(1 << order)
+	height := uint32(1 << order)
 
 	// 2. Open output file for writing
 	outFile, err := os.Create(outputPath)
@@ -89,7 +90,7 @@ func Run(args []string) error {
 	if err := binary.Write(outFile, binary.BigEndian, imgHeader.OriginalHeight); err != nil { // uint32
 		return fmt.Errorf("failed to write image height header: %w", err)
 	}
-	
+
 	// fib_coder.Encode will write its own 8-byte OriginalBitLen header.
 	// We just pass it the io.Reader and io.Writer.
 
@@ -97,7 +98,7 @@ func Run(args []string) error {
 	// Create an io.Reader from the generated bitstream string
 	bitstreamReader := strings.NewReader(bitstreamString)
 	originalBitLen := uint64(len(bitstreamString))
-	
+
 	err = fib_coder.Encode(bitstreamReader, outFile, originalBitLen)
 	if err != nil {
 		return fmt.Errorf("error compressing bitstream: %w", err)

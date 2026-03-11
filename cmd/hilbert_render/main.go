@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbletea"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/shaoyanji/fibtransponder/internal/bitio"
 	"github.com/shaoyanji/fibtransponder/internal/fib_coder"
 	"github.com/shaoyanji/fibtransponder/internal/image_hilbert"
@@ -27,17 +27,17 @@ type PixelMsg struct {
 
 // Model holds the TUI application's state for rendering.
 type model struct {
-	filePath          string
-	header            ImageHeader
-	grid              [][]rune // 2D array of ASCII characters representing the image
+	filePath            string
+	header              ImageHeader
+	grid                [][]rune // 2D array of ASCII characters representing the image
 	currentRenderedBits uint64   // How many bits have been processed and rendered
 	maxRenderedBits     uint64   // Total bits to render (header.OriginalWidth * header.OriginalHeight)
-	err               error
-	done              bool // True when decompression/rendering is complete
-	quit              chan struct{}
-	newPixel          chan PixelMsg // Channel to receive new pixel updates
-	width             int    // Terminal width
-	height            int    // Terminal height
+	err                 error
+	done                bool // True when decompression/rendering is complete
+	quit                chan struct{}
+	newPixel            chan PixelMsg // Channel to receive new pixel updates
+	width               int           // Terminal width
+	height              int           // Terminal height
 }
 
 // Init starts the background decompression process.
@@ -87,7 +87,7 @@ func (m *model) startDecompression() tea.Msg {
 
 	// Create a BitReader from the pipe to read bits one by one
 	bitReader := bitio.NewBitReader(pr)
-	
+
 	currentBitIndex := uint64(0)
 	n := m.header.OriginalWidth // N for Hilbert functions
 
@@ -116,7 +116,7 @@ func (m *model) startDecompression() tea.Msg {
 	}
 
 decodeLoopEnd:
-	pr.Close() // Close pipe reader
+	pr.Close()         // Close pipe reader
 	err = <-decodeDone // Wait for fib_coder.Decode to finish and get its error
 	if err != nil && err != io.EOF {
 		return errMsg{fmt.Errorf("fib_coder.Decode error: %w", err)}
@@ -180,7 +180,7 @@ func (m model) View() string {
 
 	s.WriteString(fmt.Sprintf("Rendering: %s\n", filepath.Base(m.filePath)))
 	s.WriteString(fmt.Sprintf("Dimensions: %dx%d, Bits: %d / %d\n", m.header.OriginalWidth, m.header.OriginalHeight, m.currentRenderedBits, m.maxRenderedBits))
-	
+
 	// Calculate scaling factor to fit image into terminal, if needed
 	scaleX := float64(m.width) / float64(m.header.OriginalWidth)
 	scaleY := float64(m.height-4) / float64(m.header.OriginalHeight) // -4 for header/footer text
@@ -194,16 +194,20 @@ func (m model) View() string {
 	} else {
 		scale = 1.0 // Don't scale up
 	}
-	
+
 	for y := uint32(0); y < m.header.OriginalHeight; y++ {
-		if float64(y) * scale >= float64(m.height-4) { continue } // Don't render if outside scaled bounds
+		if float64(y)*scale >= float64(m.height-4) {
+			continue
+		} // Don't render if outside scaled bounds
 		for x := uint32(0); x < m.header.OriginalWidth; x++ {
-			if float64(x) * scale >= float64(m.width) { continue } // Don't render if outside scaled bounds
-			
+			if float64(x)*scale >= float64(m.width) {
+				continue
+			} // Don't render if outside scaled bounds
+
 			// Simple scaling: just pick the top-left pixel of the scaled block
 			displayChar := m.grid[y][x]
 			// We can implement more sophisticated scaling/averaging here if needed
-			
+
 			s.WriteRune(displayChar)
 		}
 		s.WriteRune('\n')
@@ -246,14 +250,14 @@ func runHilbertRenderMain(args []string) error {
 
 	// Initial model without full header, it will be read in goroutine
 	m := model{
-		filePath:   filePath,
-		newPixel:   make(chan PixelMsg),
-		quit:       make(chan struct{}),
-		width: 80, // Default terminal width
-		height: 24, // Default terminal height
+		filePath: filePath,
+		newPixel: make(chan PixelMsg),
+		quit:     make(chan struct{}),
+		width:    80, // Default terminal width
+		height:   24, // Default terminal height
 	}
-	
-	p := bubbletea.NewProgram(m, bubbletea.WithAltScreen())
+
+	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("bubbletea program failed: %w", err)
 	}

@@ -63,6 +63,9 @@ func RevalidateMaterializeEligible(id uint64, frontier FrontierIndex, log OpLog)
 // ApplyDelta translates a DerivedDelta into zero or more MemOps.
 // TODO(spec): implement idempotent apply + revalidation.
 func ApplyDelta(d DerivedDelta, q *QueueState) []MemOp {
-	_, _ = d, q
+	_ = d
+	if q != nil {
+		_, _, _ = q.frontier, q.log, q.quota
+	}
 	return nil
 }

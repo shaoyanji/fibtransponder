@@ -1,7 +1,6 @@
 package test
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -55,7 +54,7 @@ func CreateCheckerboardImage(t *testing.T, filename string, makePNG bool) string
 // GenerateExpectedBitstream creates an expected Hilbert-ordered bitstream
 // for a given image path, order, and threshold.
 func GenerateExpectedBitstream(t *testing.T, imagePath string, hilbertOrder int, binarizationThreshold uint8) string {
-	bitstream, _, _, err := image_hilbert.GenerateBitstream(imagePath, hilbertOrder, binarizationThreshold)
+	bitstream, err := image_hilbert.GenerateBitstream(imagePath, hilbertOrder, binarizationThreshold)
 	if err != nil {
 		t.Fatalf("GenerateBitstream failed: %v", err)
 	}

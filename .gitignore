@@ -1,1 +1,26 @@
+# Binaries / build artifacts
 main
+fibtransponder_tui
+fibtransponder_api
+fibtransponder
+*.exe
+*.out
+*.test
+
+# Go tooling
+coverage.out
+*.coverprofile
+
+# Temp/editor noise
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Local scratch / planning artifacts
+morningprompt.txt
+taskwrapper.txt
+research_papers.sh
+projmanager/
+delta-classifier-constants (4).md
+delta-queue-spec (2).md

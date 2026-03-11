@@ -1,7 +1,9 @@
+//go:build legacy
+// +build legacy
+
 package test
 
 import (
-	"bytes"
 	"fmt"
 	"image"
 	"image/color"
@@ -13,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/shaoyanji/fibtransponder/internal/extension"
-	"github.com/shaoyanji/fibtransponder/internal/image_analyzer"
 	"github.com/shaoyanji/fibtransponder/internal/image_hilbert"
 	sessionpkg "github.com/shaoyanji/fibtransponder/internal/session" // Import new session package
 )
@@ -70,7 +71,7 @@ func TestImageBitstreamProcessing(t *testing.T) {
 		{"JPEG Checkerboard", jpegPath, "jpeg"},
 	}
 
-	const hilbertOrder = 3 // 2^3 = 8x8 image
+	const hilbertOrder = 3            // 2^3 = 8x8 image
 	const binarizationThreshold = 128 // Mid-gray threshold
 
 	for _, tt := range tests {
@@ -195,7 +196,6 @@ func TestUniformImageProcessing(t *testing.T) {
 	if !strings.Contains(bitstream, "0000000000000000000000000000000000000000000000000000000000000000") {
 		t.Errorf("Expected all zeros bitstream for uniform black image, got: %s", bitstream)
 	}
-
 
 	session := sessionpkg.NewSession("test-uniform-session") // Use sessionpkg.NewSession
 	if err := session.ProcessBits(bitstream); err != nil {

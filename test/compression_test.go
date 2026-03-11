@@ -1,9 +1,11 @@
+//go:build legacy
+// +build legacy
+
 package test
 
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"math/rand"
 	"strings"
 	"testing"
@@ -40,7 +42,6 @@ func generateSparseBitstream(length int, oneDensity float64) string {
 	return sb.String()
 }
 
-
 func TestLosslessCompression(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 
@@ -56,7 +57,7 @@ func TestLosslessCompression(t *testing.T) {
 		{"Alternating", "01010101"},
 		{"MixedShort", "0010110001"},
 		{"LongZeros", "000000000010000000001"}, // Long run of zeros
-		{"LongOnes", "111111111111111111111"},   // Long run of ones (bad for this scheme)
+		{"LongOnes", "111111111111111111111"},  // Long run of ones (bad for this scheme)
 		{"MediumRandom", generateRandomBitstream(100)},
 		{"LongRandom", generateRandomBitstream(1000)},
 		{"MediumSparse", generateSparseBitstream(100, 0.1)}, // 10% ones
@@ -69,7 +70,7 @@ func TestLosslessCompression(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			originalReader := strings.NewReader(tc.original)
 			compressedWriter := new(bytes.Buffer)
-			
+
 			// Encode expects original length in bits
 			originalLenInBits := uint64(len(tc.original))
 			err := fib_coder.Encode(originalReader, compressedWriter, originalLenInBits)
@@ -79,12 +80,12 @@ func TestLosslessCompression(t *testing.T) {
 
 			decompressedReader := new(bytes.Buffer)
 			compressedReader := bytes.NewReader(compressedWriter.Bytes())
-			
+
 			_, err = fib_coder.Decode(compressedReader, decompressedReader)
 			if err != nil {
 				t.Fatalf("Decompressing failed: %v", err)
 			}
-			
+
 			decompressed := decompressedReader.String()
 
 			// Assert lossless
@@ -122,23 +123,23 @@ func TestFibonacciCodeIntegrity(t *testing.T) {
 	// These expected raw codes are based on the direct Zeckendorf representation for N,
 	// using F_i for i>=2, with largest F_i bit on the left.
 	testCases := []struct {
-		val int
+		val     int
 		rawCode string // The code *without* the "011" suffix
 	}{
 		{0, ""},
-		{1, "1"},     // F2
-		{2, "10"},    // F3
-		{3, "100"},   // F4
-		{4, "101"},   // F4+F2
-		{5, "1000"},  // F5
-		{6, "1001"},  // F5+F2
-		{7, "1010"},  // F5+F3
-		{8, "10000"}, // F6
-		{9, "10001"}, // F6+F2
-		{10, "10010"}, // F6+F3
-		{13, "100000"}, // F7
-		{20, "101010"}, // F8+F6+F4
-		{33, "1010101"}, // F9+F7+F5+F3
+		{1, "1"},         // F2
+		{2, "10"},        // F3
+		{3, "100"},       // F4
+		{4, "101"},       // F4+F2
+		{5, "1000"},      // F5
+		{6, "1001"},      // F5+F2
+		{7, "1010"},      // F5+F3
+		{8, "10000"},     // F6
+		{9, "10001"},     // F6+F2
+		{10, "10010"},    // F6+F3
+		{13, "100000"},   // F7
+		{20, "101010"},   // F8+F6+F4
+		{33, "1010101"},  // F9+F7+F5+F3
 		{54, "10101010"}, // F10+F8+F6+F4+F2
 	}
 

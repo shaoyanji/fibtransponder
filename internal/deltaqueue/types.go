@@ -96,18 +96,26 @@ type Score struct {
 	Novelty   uint32
 }
 
-// FrontierIndex is intentionally left as TODO until interface details are specified.
-// TODO(spec): define exact frontier index contract.
-type FrontierIndex interface{}
+// FrontierIndex provides read-only access to active frontier state.
+type FrontierIndex interface {
+	Has(id uint64) bool
+	Score(id uint64) (Score, bool)
+	Materialized(id uint64) bool
+}
 
-// OpLog is intentionally left as TODO until interface details are specified.
-// TODO(spec): define exact operation log contract.
-type OpLog interface{}
+// OpLog provides read-only tombstone visibility.
+type OpLog interface {
+	HasLiveTombstone(id uint64) bool
+}
 
-// PromotionQuota is intentionally left as TODO until interface details are specified.
-// TODO(spec): define quota shape and accounting semantics.
-type PromotionQuota interface{}
+// PromotionQuota provides read-only promotion budget state.
+type PromotionQuota interface {
+	AllowPromotion() bool
+}
 
-// QueueState is intentionally left as TODO until state layout is specified.
-// TODO(spec): define queue state fields and index ownership.
-type QueueState struct{}
+// QueueState carries minimal read-only dependencies for revalidation/apply stubs.
+type QueueState struct {
+	frontier FrontierIndex
+	log      OpLog
+	quota    PromotionQuota
+}

@@ -29,6 +29,11 @@ func d2xy(n, d uint32) (x, y uint32) {
 }
 
 // rot is a helper function for d2xy and xy2d.
+// D2XY exports Hilbert distance-to-coordinate mapping for renderers/tests.
+func D2XY(n, d uint32) (x, y uint32) {
+	return d2xy(n, d)
+}
+
 func rot(n, x, y, rx, ry uint32) (uint32, uint32) {
 	if ry == 0 {
 		if rx == 1 {
@@ -67,7 +72,7 @@ func GenerateBitstream(imagePath string, order int, threshold uint8) (string, er
 
 	for d := uint32(0); d < n*n; d++ {
 		x, y := d2xy(n, d)
-		
+
 		// Get pixel color at (x,y)
 		c := img.At(int(x), int(y))
 		r, g, b, _ := c.RGBA() // RGBA returns values 0-65535
