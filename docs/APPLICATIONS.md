@@ -1,93 +1,81 @@
-# Applications (exploration / draft)
+# APPLICATIONS — spec-compatible exploration map
 
-This file captures *application directions* for the fibtransponder abstraction.
+This file lists plausible downstream uses that remain consistent with `docs/SPEC.md`.
 
-The core abstraction is a deterministic streaming transducer over booleans with:
-- Zeckendorf/Fibonacci-radix legality features (e.g., `11` forbidden)
-- global retrospective dilation events `r++` (virtual zero-stuffing / upsample-by-2)
-- symbolic (regular-language) segmentation opportunities induced by long zero runs
-- lazily-computed probes (magnitude/log2 bounds, modular fingerprints, etc.)
+Guardrail: applications must not change core ingest semantics.
 
-## 1) "Weather probe" / environmental stress meter
+## Core signals available to applications
 
-Observable outputs:
-- dilation count `r(t)`
-- dilation rate `dr/dt`
-- zero-run statistics (distribution, power-of-two crossings)
-- hexagram-window opcode frequencies (local pattern histogram)
+Reliable low-cost outputs from the core path:
 
-Interpretation: not "entropy" in the Shannon sense, but a robust *stress/complexity signature* of the observed channel.
+- dilation exponent `r(t)`
+- dilation event rate
+- `zeroRun` lengths and sparse marker crossings (`8,16,32,...` default)
+- local 6-bit window statistics (`w`-derived)
 
-## 2) Boolean transport layer for Fourier analysis (signal → boolean → spectrum)
+These are the primary portable signals. Anything heavier should be optional/lazy.
 
-Goal: allow arbitrary sensor signals to be transported/encoded as a boolean stream, while still enabling meaningful downstream spectral analysis.
+## 1) Channel stress fingerprinting
 
-### Approach A: time-domain transport + downstream FFT
-- Treat the boolean stream as a time series `b(t) ∈ {0,1}`.
-- Use dilation `r` as a clock-resync / sampling lattice adjustment.
-- Segment into windows (allowed segmentation policy) for analysis.
-- Convert to centered signal `x(t)=b(t)-mean` or bipolar `x(t)∈{-1,+1}`.
-- Compute FFT on windows.
+Use event-derived summaries as a robust channel signature:
 
-Notes:
-- Dilation changes effective sampling rate → spectral results must be annotated with `r`.
-- Markers can serve as window boundaries / keyframes.
+- dilation burst patterns
+- zero-run distribution
+- marker cadence
+- window histogram drift over time
 
-### Approach B: event (spike) transport
-- Carry spike events as `1` separated by zeros.
-- Spectral analysis via inter-spike interval transforms, Lomb–Scargle, or treating spikes as impulses.
+This is an operational fingerprinting use-case, not a claim of full semantic decoding.
 
-### Approach C: multichannel boolean bundle
-- Carry multiple boolean channels in parallel (vector-valued `b_c(t)`).
-- Encode each channel in its own fibtransponder instance, or multiplex channels by time-division markers.
+## 2) Boolean stream analysis adapters
 
-Deliverable concept:
-- `internal/signal` module providing windowing + FFT adapters for boolean streams.
+Treat observed bits as a time series and build bounded adapters:
 
-## 3) Signal decomposition module
+- windowed autocorrelation
+- Walsh–Hadamard summaries on fixed windows
+- optional FFT views on mapped bipolar forms
 
-Desired decompositions on boolean streams:
-- run-length distribution / renewal process fit
-- autocorrelation of boolean signal
-- Walsh–Hadamard transform (boolean-native)
-- wavelet-like multiscale summaries (dilation events provide natural scales)
+Important: any frequency-domain interpretation should be annotated with `r`/marker context due to retrospective dilation semantics.
 
-A pragmatic initial set:
-- rolling mean/variance
-- rolling autocorrelation at a small set of lags
-- WHT on fixed-size windows (power-of-two) because it matches boolean transport well
+## 3) Segmentation-assisted interpretation
 
-## 4) Multi-dimension extension
+At sparse candidate cut points, downstream tooling may evaluate cut/no-cut alternatives.
 
-Interpret the stream as a 2D/3D field by mapping time index `t` to coordinates:
-- 2D: `t → (x=t mod W, y=floor(t/W))`
-- 3D: add z dimension similarly
+Constraints:
 
-Then apply spatial transforms:
-- 2D FFT / DCT
-- morphological operators
-- per-tile hexagram histograms
+- candidate points remain deterministic and sparse
+- ambiguity represented symbolically (automata), not full enumeration
+- outputs remain bounded under worst-case streams
 
-This can help for:
-- visualization dashboards
-- detecting structured interference patterns
+## 4) Visual operator tooling
 
-## 5) Fractal / multiscale analysis
+UI/API surfaces can expose:
 
-Dilation events naturally create a multiscale hierarchy.
+- live `r`, zero-run, marker metrics
+- bounded summaries of segment hypotheses
+- probe snapshots for debugging and tuning
 
-Possible analyses:
-- estimate Hurst-like roughness using counts across scales (markers at 2^k zero-run crossings)
-- box-counting dimension on 2D embedding of the boolean field
-- multiscale entropy proxies (again, not claiming Shannon entropy)
+Rendering stays budgeted and non-blocking for ingest.
 
-Deliverable concept:
-- `internal/signal/fractal` functions for multiscale summaries.
+## 5) Sync/fingerprint probes (Rosetta layer)
 
-## 6) What matters to keep invariant
+Optional research probes:
 
-Even as applications diversify, the core invariants should remain:
-- bounded ingest cost
-- no materialization of stuffed zeros
-- deterministic transducer
-- symbolic ambiguity (regular language) rather than enumerated hypotheses
+- modular fingerprints (`N mod p_i`)
+- magnitude/log2 bounds via asymptotics
+
+These remain outside core correctness until dilation semantics for each probe are fully locked.
+
+## What is intentionally out of scope (for now)
+
+- broad claims about universal LLM correction or orchestration
+- application narratives that require semantics not defined in SPEC
+- expensive probes promoted to mandatory ingest behavior
+
+## Compatibility rule
+
+A candidate application is valid only if it preserves:
+
+- O(1)/amortized O(1) ingest updates
+- no stuffed-zero materialization
+- linear memory growth in observed bits
+- budgeted rendering with graceful degradation
