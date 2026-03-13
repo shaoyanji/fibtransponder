@@ -39,5 +39,7 @@ Scope: mechanical order only, following existing spec text.
    - 4 classifier benchmark variants (0 allocs, 50-100ns/op)
    - 8 queue benchmark variants (0-1 allocs, 48-273ns/op)
 
-9. Wire CI targets (TODO)
-   - Ensure conformance + benchmark targets can run reproducibly.
+9. ~~Wire CI targets~~ (done 2026-03-13)
+   - `make ci` → vet + test + conformance (canonical check)
+   - `make test` / `make bench` / `make conformance` / `make vet`
+   - Full pipeline verified clean.
