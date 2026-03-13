@@ -31,12 +31,13 @@ Scope: mechanical order only, following existing spec text.
    - Score snapshot at append time
    - Merge via ApplyDeltaMerge (parent-gated)
 
-7. Implement conformance test (TODO)
-   - `TestClassifierStepsSinceOrdering` per appendix text.
+7. ~~Implement conformance test~~ (done 2026-03-13)
+   - 8 invariant tests in `conformance_test.go`
+   - StepsSince ordering test in `classifier_test.go`
 
-8. Implement benchmark suites (TODO)
-   - `BenchmarkClassify/*`
-   - `BenchmarkQueue/*`
+8. ~~Implement benchmark suites~~ (done 2026-03-13)
+   - 4 classifier benchmark variants (0 allocs, 50-100ns/op)
+   - 8 queue benchmark variants (0-1 allocs, 48-273ns/op)
 
 9. Wire CI targets (TODO)
    - Ensure conformance + benchmark targets can run reproducibly.

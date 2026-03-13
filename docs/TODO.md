@@ -11,8 +11,11 @@
 - [x] Define queue state contracts (`MemFrontier`, `MemOpLog`, `FixedQuota` in `queue_state.go`)
 - [x] Implement predicate semantics for `Revalidate*` (`revalidate.go`, 6 predicates)
 - [x] Implement `ApplyDelta` + `ApplyDeltaTarget` + `ApplyDeltaMerge` (`apply.go`)
+- [x] Implement all 8 invariant conformance tests (`conformance_test.go`)
+- [x] Implement all 12 benchmark variants (classifier + queue)
+- [ ] Wire CI targets for conformance + benchmarks
 
-## Chore — Codex mechanical-only pass (today)
+## Chore — Codex mechanical-only pass (deferred)
 - [ ] Run Codex with the mechanical guardrails prompt (spec-to-code only; no semantic invention)
 - [ ] Scope strictly to:
   - `internal/deltaqueue/types.go`
