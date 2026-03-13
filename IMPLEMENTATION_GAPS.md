@@ -11,13 +11,13 @@ Scope: mechanical gap inventory against `delta-queue-spec (2).md` and `delta-cla
 
 ## Missing implementation (TODO, no guessing)
 1. ~~`Classify` logic~~ (done 2026-03-13 — see `classifier.go`)
-2. `DerivedDelta.Aux` packing/unpacking helpers for `AuxBuckets`.
-3. `QueueState` concrete shape.
-4. `FrontierIndex` contract.
-5. `OpLog` contract.
-6. `PromotionQuota` contract.
-7. `ApplyDelta` idempotent translation + revalidation wiring.
-8. All `Revalidate*` predicate logic with O(1)/O(log n) guarantees.
+2. ~~`DerivedDelta.Aux` packing/unpacking helpers~~ (done 2026-03-13 — `packAuxBuckets`/`classifyAux` in `classifier.go`)
+3. ~~`QueueState` concrete shape~~ (done 2026-03-13 — `MemFrontier`, `MemOpLog`, `FixedQuota` in `queue_state.go`)
+4. ~~`FrontierIndex` contract~~ (done 2026-03-13 — interface + `MemFrontier`)
+5. ~~`OpLog` contract~~ (done 2026-03-13 — interface + `MemOpLog`)
+6. ~~`PromotionQuota` contract~~ (done 2026-03-13 — interface + `FixedQuota`)
+7. ~~`ApplyDelta` idempotent translation + revalidation wiring~~ (done 2026-03-13 — `apply.go`)
+8. ~~All `Revalidate*` predicate logic~~ (done 2026-03-13 — `revalidate.go`)
 9. Frontier derivation/replay support from append-only log.
 10. Materialize-eligible handoff set wiring.
 

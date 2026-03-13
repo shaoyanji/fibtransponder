@@ -8,7 +8,9 @@
   - **Resolution (2026-03-13):** Constants appendix is authoritative for classifier→delta interface surface. Queue spec omits `StepsSince` because it defines the queue-side contract only, not the classifier output shape. Field is confirmed required on `DerivedDelta`.
 - [x] Define nil `ClassifierState` contract for `Classify` — returns minimal delta, no panic
 - [x] Implement classifier core (`Classify` in `classifier.go`, 0 allocs, ~55ns/op)
-- [ ] Implement predicate semantics for `Revalidate*` (spec-only, no guessing)
+- [x] Define queue state contracts (`MemFrontier`, `MemOpLog`, `FixedQuota` in `queue_state.go`)
+- [x] Implement predicate semantics for `Revalidate*` (`revalidate.go`, 6 predicates)
+- [x] Implement `ApplyDelta` + `ApplyDeltaTarget` + `ApplyDeltaMerge` (`apply.go`)
 
 ## Chore — Codex mechanical-only pass (today)
 - [ ] Run Codex with the mechanical guardrails prompt (spec-to-code only; no semantic invention)

@@ -16,15 +16,20 @@ Scope: mechanical order only, following existing spec text.
    - Conformance test `TestClassifierStepsSinceOrdering` passing
    - Allocation-free test passing
 
-4. Implement queue state contracts (TODO)
-   - Define `QueueState`, `FrontierIndex`, `OpLog`, `PromotionQuota` concrete shapes.
+4. ~~Implement queue state contracts~~ (done 2026-03-13)
+   - `MemFrontier`: map-backed FrontierIndex with Insert/Remove/SetMaterialized
+   - `MemOpLog`: map-backed OpLog with tombstone tracking
+   - `FixedQuota`: counter-based PromotionQuota with overflow guard
+   - `NewQueueState()` constructor, exported fields
+   - `revalidate.go`: all 6 predicates implemented
+   - `apply.go`: ApplyDelta, ApplyDeltaTarget, ApplyDeltaMerge
 
-5. Implement revalidation predicates (TODO)
-   - `RevalidateAdd`, `RevalidatePromote`, `RevalidateDemote`, `RevalidateTombstone`, `RevalidateMerge`, `RevalidateMaterializeEligible`.
+5. ~~Implement revalidation predicates~~ (done 2026-03-13, bundled with #4)
 
-6. Implement `ApplyDelta` (TODO)
-   - Translate hints to `MemOp` append operations.
-   - Enforce idempotent stale-hint behavior via revalidation.
+6. ~~Implement `ApplyDelta`~~ (done 2026-03-13, bundled with #4)
+   - Idempotent translate via revalidation gates
+   - Score snapshot at append time
+   - Merge via ApplyDeltaMerge (parent-gated)
 
 7. Implement conformance test (TODO)
    - `TestClassifierStepsSinceOrdering` per appendix text.

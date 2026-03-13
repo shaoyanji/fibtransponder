@@ -119,9 +119,9 @@ type PromotionQuota interface {
 	AllowPromotion() bool
 }
 
-// QueueState carries minimal read-only dependencies for revalidation/apply stubs.
+// QueueState carries minimal read-only dependencies for revalidation/apply.
 type QueueState struct {
-	frontier FrontierIndex
-	log      OpLog
-	quota    PromotionQuota
+	Frontier FrontierIndex
+	Log      OpLog
+	Quota    PromotionQuota
 }
