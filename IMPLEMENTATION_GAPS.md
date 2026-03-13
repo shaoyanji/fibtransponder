@@ -10,7 +10,7 @@ Scope: mechanical gap inventory against `delta-queue-spec (2).md` and `delta-cla
 - Skipped conformance/benchmark test names from spec.
 
 ## Missing implementation (TODO, no guessing)
-1. `Classify` logic (allocation-free behavior, suppress/reset behavior, sketch update order).
+1. ~~`Classify` logic~~ (done 2026-03-13 — see `classifier.go`)
 2. `DerivedDelta.Aux` packing/unpacking helpers for `AuxBuckets`.
 3. `QueueState` concrete shape.
 4. `FrontierIndex` contract.

@@ -6,7 +6,8 @@
 - [x] Keep/annotate `TODO(spec)` where frozen docs are ambiguous
 - [x] Resolve `DerivedDelta.StepsSince` spec mismatch between appendix and queue spec
   - **Resolution (2026-03-13):** Constants appendix is authoritative for classifier→delta interface surface. Queue spec omits `StepsSince` because it defines the queue-side contract only, not the classifier output shape. Field is confirmed required on `DerivedDelta`.
-- [ ] Define nil `ClassifierState` contract for `Classify`
+- [x] Define nil `ClassifierState` contract for `Classify` — returns minimal delta, no panic
+- [x] Implement classifier core (`Classify` in `classifier.go`, 0 allocs, ~55ns/op)
 - [ ] Implement predicate semantics for `Revalidate*` (spec-only, no guessing)
 
 ## Chore — Codex mechanical-only pass (today)

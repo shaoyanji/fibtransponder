@@ -1,18 +1,6 @@
 package deltaqueue
 
-// Classify annotates a CoreDelta with derived hints.
-// TODO(spec): implement allocation-free classifier logic.
-func Classify(core CoreDelta, cls *ClassifierState) DerivedDelta {
-	out := DerivedDelta{Core: core}
-	if cls == nil {
-		// TODO(spec): nil classifier state contract is not specified.
-		return out
-	}
-	// StepsSince is copied from classifier state. The classifier constants appendix
-	// is authoritative for this interface surface (see types.go resolution note).
-	out.StepsSince = cls.StepsSince
-	return out
-}
+// Classify implementation moved to classifier.go (allocation-free).
 
 // RevalidateAdd: item is not currently active in the frontier
 // and does not currently have a live tombstone.

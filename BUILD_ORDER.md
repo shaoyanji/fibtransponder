@@ -9,9 +9,12 @@ Scope: mechanical order only, following existing spec text.
    - Constants appendix is authoritative for `DerivedDelta.StepsSince`.
    - Queue spec omits it by design (queue-side contract only).
 
-3. Implement classifier core (TODO)
-   - `Classify(core, cls)` with update order from spec.
-   - Keep allocation-free constraint.
+3. ~~Implement classifier core~~ (done 2026-03-13)
+   - `Classify(core, cls)` implemented in `classifier.go`
+   - Allocation-free: 0 B/op, ~55ns/op
+   - Update order: StepsSince increment → derive flags → suppress/reset → AuxBuckets → Sketch
+   - Conformance test `TestClassifierStepsSinceOrdering` passing
+   - Allocation-free test passing
 
 4. Implement queue state contracts (TODO)
    - Define `QueueState`, `FrontierIndex`, `OpLog`, `PromotionQuota` concrete shapes.
