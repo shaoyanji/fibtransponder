@@ -5,8 +5,9 @@ Scope: mechanical order only, following existing spec text.
 1. Freeze the interface surface (done)
    - Keep type and function signatures aligned with spec names.
 
-2. Resolve one spec ambiguity (TODO)
-   - Reconcile `DerivedDelta.StepsSince` mention in constants appendix vs struct in interface spec.
+2. ~~Resolve one spec ambiguity~~ (done 2026-03-13)
+   - Constants appendix is authoritative for `DerivedDelta.StepsSince`.
+   - Queue spec omits it by design (queue-side contract only).
 
 3. Implement classifier core (TODO)
    - `Classify(core, cls)` with update order from spec.

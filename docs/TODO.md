@@ -4,7 +4,8 @@
 - [x] Align mechanical constants/fields for `internal/deltaqueue/{types,flags,stubs}.go`
 - [x] Add compile-safe stubs without semantic behavior
 - [x] Keep/annotate `TODO(spec)` where frozen docs are ambiguous
-- [ ] Resolve `DerivedDelta.StepsSince` spec mismatch between appendix and queue spec
+- [x] Resolve `DerivedDelta.StepsSince` spec mismatch between appendix and queue spec
+  - **Resolution (2026-03-13):** Constants appendix is authoritative for classifier→delta interface surface. Queue spec omits `StepsSince` because it defines the queue-side contract only, not the classifier output shape. Field is confirmed required on `DerivedDelta`.
 - [ ] Define nil `ClassifierState` contract for `Classify`
 - [ ] Implement predicate semantics for `Revalidate*` (spec-only, no guessing)
 

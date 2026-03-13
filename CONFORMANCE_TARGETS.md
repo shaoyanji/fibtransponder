@@ -9,7 +9,7 @@ Source documents:
 ### `TestClassifierStepsSinceOrdering`
 - Source: constants appendix section "Required conformance test".
 - Status: scaffolded and skipped.
-- TODO: implement after `DerivedDelta.StepsSince` ambiguity is resolved.
+- StepsSince ambiguity resolved (2026-03-13) — test can now be implemented.
 
 ## Classifier Benchmarks (required)
 

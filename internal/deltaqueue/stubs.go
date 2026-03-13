@@ -8,7 +8,8 @@ func Classify(core CoreDelta, cls *ClassifierState) DerivedDelta {
 		// TODO(spec): nil classifier state contract is not specified.
 		return out
 	}
-	// TODO(spec): constants appendix conformance text expects DerivedDelta.StepsSince.
+	// StepsSince is copied from classifier state. The classifier constants appendix
+	// is authoritative for this interface surface (see types.go resolution note).
 	out.StepsSince = cls.StepsSince
 	return out
 }

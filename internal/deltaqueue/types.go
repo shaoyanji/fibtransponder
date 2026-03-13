@@ -29,8 +29,14 @@ type DerivedDelta struct {
 	Core         CoreDelta
 	DerivedFlags uint32 // see DerivedFlag constants, §I.5.2
 	Aux          uint32 // packed score buckets; see §I.5.3
-	// TODO(spec): delta-queue spec omits this field, but frozen constants appendix
-	// conformance text references DerivedDelta.StepsSince[0].
+	// StepsSince is per-lane monotonic step counter, computed by the classifier
+	// and emitted on every DerivedDelta. Saturates at StepsSinceSaturation (0xFFFF).
+	// Lane indices: StateChange=0, Dilation=1, SegmentCandidate=2, MarkerCandidate=3.
+	//
+	// Resolution note: the queue spec omits this field because it defines the
+	// queue-side contract only. The classifier constants appendix is authoritative
+	// for the classifier→delta interface surface; it correctly requires
+	// DerivedDelta.StepsSince[N] for the conformance test.
 	StepsSince [4]uint16
 }
 

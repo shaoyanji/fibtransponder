@@ -22,9 +22,9 @@ Scope: mechanical gap inventory against `delta-queue-spec (2).md` and `delta-cla
 10. Materialize-eligible handoff set wiring.
 
 ## Spec consistency TODOs
-- `delta-queue-spec (2).md` defines `DerivedDelta` without `StepsSince`.
-- `delta-classifier-constants (4).md` conformance text references `DerivedDelta.StepsSince[0]`.
-- TODO: reconcile this before implementing `TestClassifierStepsSinceOrdering` semantics.
+- ~~`delta-queue-spec (2).md` defines `DerivedDelta` without `StepsSince`.~~
+- ~~`delta-classifier-constants (4).md` conformance text references `DerivedDelta.StepsSince[0]`.~~
+- **Resolved 2026-03-13:** Constants appendix is authoritative for classifier→delta interface. `StepsSince` field is required on `DerivedDelta`. Queue spec omits it because it defines the queue-side contract only.
 
 ## Out of scope (kept intentionally unimplemented)
 - JIT materialization internals.
