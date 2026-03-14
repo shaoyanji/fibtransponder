@@ -104,11 +104,11 @@ func Classify(core CoreDelta, cls *ClassifierState) DerivedDelta {
 	// ── 5. Compute AuxBuckets (ordinal hints, 8 bits each) ──
 	out.Aux = packAuxBuckets(classifyAux(core, *cls, derived))
 
-	// ── 6. Update Sketch (Zobrist fold) ──
-	// Fold state transitions into sketch for cheap divergence detection.
-	cls.Sketch ^= uint64(core.StateID) * ZobristSeed
-	cls.Sketch ^= uint64(core.CoreFlags) * ZobristSeed
-	cls.Sketch ^= uint64(derived) * ZobristSeed
+	// ── 6. Sketch (read-only from FSVM core) ──
+	// The Zobrist sketch is now computed in fsvm.Step() and carried on CoreDelta.
+	// The classifier reads it for divergence detection — no recomputation needed.
+	// Copy sketch to classifier state for downstream consumers.
+	cls.Sketch = core.Sketch
 
 	// ── Update classifier state for next step ──
 	cls.HasPrev = true

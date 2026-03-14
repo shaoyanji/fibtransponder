@@ -21,6 +21,7 @@ type CoreDelta struct {
 	StateID   uint32 // FSVM state identifier after this step
 	SegEpoch  uint32 // coarse segment epoch; incremented by fsvm on major boundaries
 	CoreFlags uint32 // see CoreFlag constants, §I.5.1
+	Sketch    uint64 // Zobrist sketch from FSVM core (read-only for classifier)
 }
 
 // DerivedDelta is produced by the classifier immediately after each Step().
