@@ -388,9 +388,27 @@ The authoritative reading: **seeds label trajectories; geometry changes sensitiv
 
 ## 12. Next Experiments
 
-1. **Second-axis structure:** Add marker threshold variation alongside width. Measure orthogonality.
-2. **Window width variation:** Test W=4 vs W=6 vs W=8 as another structural axis.
-3. **Combined calibration:** 2-axis array (width × marker threshold) on larger corpus.
+### Second-axis: marker threshold variation
+
+**Canonical sentence:** Width selects locality sensitivity; threshold selects event admission sensitivity.
+
+**Design:** Hold seeds fixed, keep width axis (w=1, w=2, w=3), add threshold axis:
+- T₁: powers-of-2 ≥ 8 (current default)
+- T₂: powers-of-3 ≥ 9
+- T₃: linear ≥ 16
+
+**Hygiene rule:** Compare against the already-proven width matrix, not in isolation. Each (width, threshold) pair produces a sensitivity vector over the 3 corpus classes. Measure independence between axes.
+
+**Falsification standard:**
+- **Fail (gain only):** Threshold only rescales each width's existing class ordering. Just louder/quieter copies.
+- **Fail (co-vary):** Width and threshold produce the same family of rankings. Lower effective dimensionality than it appears.
+- **Pass (independent axis):** Threshold causes new class order flips or materially changes temporal burst structure at fixed width. Real second structural axis.
+
+**What to measure:** For each (w, t) pair, produce the sensitivity vector (dil-rate per class). Compute rank correlation between threshold variants at fixed width. If ranks change, threshold is independent. If ranks stay the same with scaled values, threshold is just gain.
+
+### Later experiments
+- Window width variation: W=4 vs W=6 vs W=8 as another structural axis
+- Combined 2-axis array on larger corpus (if second axis proves independent)
 
 ---
 
