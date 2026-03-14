@@ -98,26 +98,60 @@ W2: tight=0x000000000000002e  medium=0x0000000000000022  wide=0x0000000000000026
 
 **No. The array currently produces different fingerprints, not structural readings.**
 
-All three transponders report the same event structure (identical DILATE counts, identical marker counts). The sketch diverges between transponders, but this divergence is:
-- Unstable (collisions occur on some inputs)
-- Redundant (correlated with DILATE rate, which is already captured without calibration)
-- Not class-separating (the same transponder produces overlapping sketch ranges across classes)
+The experiment confirms three facts:
 
-What *does* sense structure is the FSVM itself — DILATE rate cleanly separates the three input classes (0.199 vs 0.176 vs 0.031). But this separation requires only one transponder. Adding two more with different seed tables produces different sketch values but does not add separability.
+1. **Seed variation changes fingerprint identity.** Different ZobristSeed tables produce different sketch values.
+2. **Seed variation does not change event structure.** All transponders produce identical DILATE and marker counts on the same input.
+3. **Class separation comes from FSVM dynamics, not calibration diversity.** A single transponder already separates prose (0.199) from code (0.176) from synthetic (0.031).
 
-The transponder array hypothesis — that different calibrations detect different structural features — is **falsified by this experiment**. At least with the current Zobrist-seed-only calibration approach, all transponders see the same structure. They only differ in the hash of what they see.
+**Corrected conclusion:** The current array is a multi-fingerprint wrapper around one detector, not a multi-detector sensor array. ZobristSeed tables are suitable for sketch identity and coherence tracking, but they do not by themselves create distinct structural detectors.
 
-## 8. What Would Need to Change
+**One-line summary:** Seed-only calibration falsified; structural calibration remains open.
 
-For the array to actually sense different structure, calibration would need to affect the *detection logic*, not just the sketch hashing. Possibilities:
+## 8. Where Structural Diversity Must Come From
 
-- **Locality spacing:** Different transponders look at different bit windows (1-bit adjacency vs 3-bit patterns vs 8-bit patterns)
-- **Window size:** Different W widths (currently fixed at 6 bits)
-- **Marker thresholds:** Different zero-run thresholds for marker emission
-- **Dilation rule:** Different adjacency sensitivity (currently fixed at "11")
+The vision doc's biological analogy (cochlear hair cells with different spacings) points to the correct calibration surface: **detection geometry**, not hash seeds. To produce different event profiles, transponders must vary structural parameters:
 
-As long as all transponders run the same Step() logic with different Zobrist seeds, they will always produce identical event structures with different sketch fingerprints.
+| Parameter | Current | Variation axis |
+|---|---|---|
+| Locality spacing | Fixed 1-bit adjacency | 1-bit vs 2-bit vs 4-bit adjacency windows |
+| Window width | Fixed 6-bit (W) | 4-bit vs 6-bit vs 8-bit hexagram |
+| Adjacency rule | Fixed "11" detection | Configurable pattern (e.g., "101", "110") |
+| Marker thresholds | Fixed powers-of-2 ≥ 8 | Different threshold families |
+| Dilation rule | Fixed r++ on "11" | Variable dilation exponent per pattern |
+
+The next experiment should hold seeds fixed, vary exactly one structural parameter per transponder, and re-run the same corpus. First candidate: **effective locality spacing / window rule**, as it is the closest to the biological analogy and the most likely source of event-profile divergence.
+
+## 9. Proven vs Hypothesis (Final)
+
+**Proven:**
+- FSVM DILATE rate separates input classes (structural detection works)
+- Zobrist sketch provides identity fingerprinting (coherence tracking possible)
+- Seed-only calibration does not alter event structure
+
+**Hypothesis (falsified):**
+- Different ZobristSeed tables produce different structural readings ← FALSE
+
+**Hypothesis (open):**
+- Varying detection geometry (window width, adjacency rule, marker thresholds) produces different structural readings ← UNTESTED
+- Multi-detector array improves class separability over single detector ← UNTESTED
+- Sketch divergence indicates convergence state (proprioceptive signal) ← UNTESTED
 
 ---
 
-*Generated: 2026-03-14 20:22 CET*
+## 10. Next Experiment: Structural Calibration (Proposed)
+
+**Goal:** Hold seeds fixed, vary exactly one structural parameter per transponder, re-run corpus.
+
+**Design:** Create 3 FSVM variants with different adjacency window widths:
+- T₁: 1-bit adjacency (current: `LastBit == 1 && b == 1`)
+- T₂: 2-bit adjacency (`W & 0x03 == 0x03 && b == 1`)
+- T₃: 3-bit adjacency (`W & 0x07 == 0x07 && b == 1`)
+
+**Prediction:** If structural calibration works, the three transponders should produce different DILATE counts on the same input. T₁ (current) should fire most often; T₃ should fire least often.
+
+**Implementation:** Add `AdjacencyMask uint8` and `AdjacencyValue uint8` to FSVM State. Step() checks `(s.W & s.AdjacencyMask) == s.AdjacencyValue && b == 1` instead of hardcoded `s.LastBit == 1 && b == 1`.
+
+**Success criteria:** At least one input class shows different DILATE counts across the three transponders.
+
+**Failure mode:** If all transponders still produce identical event rates, the hypothesis that detection geometry creates structural diversity is also falsified.
