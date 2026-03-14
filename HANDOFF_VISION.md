@@ -1,7 +1,19 @@
 # HANDOFF — Fibtransponder Research Vision & Next Directions
 
-**Date:** 2026-03-14  
+**Date:** 2026-03-14 (updated with calibration correction)  
 **Purpose:** This document exists because the stateful purpose of the fibtransponder has been at risk of dilution by spec-layer additions that optimize for canonicality over throughput. Read this first before modifying any code.
+
+---
+
+## Canonical Summary
+
+> **Seed-only calibration falsified; structural calibration demonstrated.**
+> **Seeds label trajectories; geometry changes sensitivity.**
+
+- ZobristSeed tables produce different sketch fingerprints but identical event structures
+- Structural parameters (adjacency width, window size, marker thresholds) change what each detector perceives
+- Varying adjacency width (w=1 vs w=2 vs w=3) changes class sensitivity ranking: w=1 prefers prose, w=2 prefers code
+- The FSVM IS the contribution; structural calibration is the mechanism for detector diversity
 
 ---
 
@@ -123,7 +135,16 @@ The "token" is which transponders are firing and at what dilation rate. Language
 
 ### Calibration protocol
 
-Each transponder's `ZobristSeed[]` table is its calibration. Different seeds = different detection sensitivity. The seed table IS the "trained parameter," but it's a lookup table, not a weight matrix.
+**Geometry is calibration. Seeds are identity.**
+
+Each transponder's structural parameters define what it detects:
+- **Adjacency width** (1-bit, 2-bit, 3-bit) — what counts as "adjacent"
+- **Window width** (4-bit, 6-bit, 8-bit) — how much recent history is tracked
+- **Marker thresholds** — what zero-run lengths trigger markers
+
+The `ZobristSeed[]` table is NOT calibration — it is sketch identity only. Different seeds produce different fingerprint values but identical event structures. Seeds label trajectories; geometry changes sensitivity.
+
+**Proven:** Varying adjacency width changes class sensitivity (w=1 prefers prose, w=2 prefers code). Seed-only calibration was falsified by controlled experiment (2026-03-14).
 
 ---
 
@@ -239,7 +260,7 @@ Or shorter: **"The Language Ear: Analog Tokenization via Fibtransponder Arrays"*
 ### What NOT to claim
 
 - This does not replace transformers. It replaces the INPUT LAYER of transformers (tokenizer + embedding + positional encoding).
-- This does not eliminate training. It eliminates VOCABULARY TRAINING (BPE, etc.). The transponder calibrations (ZobristSeed tables) still need tuning.
+- This does not eliminate training. It eliminates VOCABULARY TRAINING (BPE, etc.). Transponder structural parameters (adjacency width, window size, marker thresholds) define detection geometry.
 - This is not proven on NLP tasks yet. The FSVM is proven on boolean streams. The transponder array for language is a proposed architecture.
 
 ---
@@ -257,17 +278,19 @@ Or shorter: **"The Language Ear: Analog Tokenization via Fibtransponder Arrays"*
 
 **Proof:** FSVM benchmark stays at ~46-48ns (one XOR is negligible). Classifier benchmark drops to ~10-15ns (read-only).
 
-### Near-term: Transponder array prototype
+### Near-term: Second-axis structural calibration (NEXT EXPERIMENT)
 
-**Goal:** Implement 2-3 FSVM instances with different ZobristSeed calibrations, verify they detect different signal patterns.
+**Status:** First axis (adjacency width) proven — see REPORT_STRUCTURAL.md.
+
+**Goal:** Add a second structural parameter (marker threshold or dilation rule) to determine whether the array becomes a true basis set or just redundant variants of one axis.
 
 **Approach:**
-- Create `internal/transponder/array.go` with N FSVM instances
-- Each has a different seed table (calibration)
-- Feed the same bitstream to all, compare DILATE rates and Sketch values
-- Verify that different calibrations produce different event profiles
+- Hold width variation (w=1, w=2, w=3) as axis 1
+- Vary marker threshold family (powers-of-2≥8, powers-of-3≥9, linear≥16) as axis 2
+- Re-run same prose/code/synthetic corpus
+- Measure orthogonality: do detectors with different 2nd-axis params produce independent class orderings?
 
-**Benchmark:** Array of 3 transponders should process at ~50ns (parallel, not sequential — they're independent).
+**Falsification rule:** If 2nd-axis variation just rescales existing sensitivities without changing class rankings, the array is still a 1-parameter family. If it produces genuinely independent detection profiles, the array is becoming a basis set.
 
 ### Medium-term: Axial adjustment loop
 
@@ -308,16 +331,21 @@ Zero allocation is non-negotiable for the FSVM. One alloc per step is 5-10ns. Ov
 ### ❌ Treating tokens as fundamental
 Tokens are a discretization artifact. The FSVM operates on bits. Any token-level thinking should be in the analytical layer, never in the core.
 
+### ❌ Seed-only calibration
+ZobristSeed tables are sketch identity, not structural calibration. They produce different fingerprints but identical event structures. Real detector diversity comes from structural parameters (adjacency width, window size, marker thresholds). Falsified by controlled corpus experiment 2026-03-14.
+
 ---
 
 ## 9. Reading Order for New Contributors
 
-1. This document (HANDOFF_VISION.md) — understand the WHY
-2. `docs/SPEC.md` — the core state machine contract
-3. `internal/fsvm/fsvm.go` — the implementation (small, read the whole thing)
-4. `docs/BENCHMARKS.md` — the numbers that matter
-5. `docs/EXPLORATIONS.md` — speculative directions (WHT, dilation trees, etc.)
-6. `internal/deltaqueue/` — the sidecar (understand what NOT to put on the hot path)
+1. This document (HANDOFF_VISION.md) — understand the WHY and canonical summary
+2. `REPORT_STRUCTURAL.md` — the experiment that proved structural calibration
+3. `REPORT_CORPUS.md` — the experiment that falsified seed-only calibration
+4. `docs/SPEC.md` — the core state machine contract
+5. `internal/fsvm/fsvm.go` — the implementation (small, read the whole thing)
+6. `docs/BENCHMARKS.md` — the numbers that matter
+7. `docs/EXPLORATIONS.md` — speculative directions (WHT, dilation trees, etc.)
+8. `internal/deltaqueue/` — the sidecar (understand what NOT to put on the hot path)
 
 Do NOT read the delta queue before understanding the FSVM. The delta queue is an implementation detail. The FSVM is the contribution.
 
@@ -337,7 +365,34 @@ If a type system makes the code more correct but twice as slow, the type system 
 
 Speed is the invariant. Correctness is the constraint. Canonicality is optional.
 
+### Calibration Correction (2026-03-14)
+
+The original vision doc overclaimed that `ZobristSeed[]` tables were the calibration mechanism. Controlled experiments proved:
+1. Seed-only calibration produces identical event structures (falsified)
+2. Structural calibration (adjacency width) changes class sensitivity (demonstrated)
+3. The array is now a multi-detector sensor, not a multi-fingerprint wrapper
+
+The authoritative reading: **seeds label trajectories; geometry changes sensitivity.**
+
+---
+
+## 11. Proven Experiments
+
+| Date | Experiment | Result | Status |
+|---|---|---|---|
+| 2026-03-14 | Zobrist-in-core relocation | FSVM 44-48ns, classifier sketch read 0.65ns | ✅ Accepted |
+| 2026-03-14 | Seed-only calibration (3 transponders, 3 corpus classes) | Identical event structures, sketch collisions | ❌ Falsified |
+| 2026-03-14 | Structural calibration (adjacency width w=1/w=2/w=3) | w=1→prose, w=2→code sensitivity | ✅ Demonstrated |
+
+---
+
+## 12. Next Experiments
+
+1. **Second-axis structure:** Add marker threshold variation alongside width. Measure orthogonality.
+2. **Window width variation:** Test W=4 vs W=6 vs W=8 as another structural axis.
+3. **Combined calibration:** 2-axis array (width × marker threshold) on larger corpus.
+
 ---
 
 *Generated: 2026-03-14 08:58 CET*  
-*Context: Session discussing FSVM → transponder array → proprioceptive computation → language ear architecture*
+*Updated: 2026-03-14 20:46 CET — calibration correction, structural calibration proven*
