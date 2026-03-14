@@ -26,26 +26,33 @@ type Event struct {
 	Payload uint64
 }
 
-// ZobristSeedBit is the per-bit Zobrist seed table.
-// Index 0 for bit=0, index 1 for bit=1. One XOR per Step, fused into the hot path.
-// These are frozen constants; changing them invalidates all prior Sketch values.
-var ZobristSeedBit = [2]uint64{
+// DefaultSeeds is the standard Zobrist seed table.
+// Index 0 for bit=0, index 1 for bit=1.
+var DefaultSeeds = [2]uint64{
 	0x517cc1b727220a95, // bit=0
 	0x9e3779b97f4a7c15, // bit=1
 }
 
 type State struct {
-	R       uint32 // dilation exponent
-	W       uint8  // 6-bit window
-	LastBit uint8
-	ZeroRun uint64
-	Sketch  uint64 // Zobrist state sketch (XOR-folded per bit)
-	// Stats
+	Seeds     [2]uint64 // per-instance Zobrist seed table
+	Sketch    uint64    // Zobrist state sketch (XOR-folded per bit)
+	ZeroRun   uint64
 	Dilations uint64
 	Markers   uint64
+	R         uint32 // dilation exponent
+	W         uint8  // 6-bit window
+	LastBit   uint8
 }
 
-func New() State { return State{} }
+// New returns a State with default seeds.
+func New() State {
+	return State{Seeds: DefaultSeeds}
+}
+
+// NewWithSeeds returns a State with caller-provided seeds.
+func NewWithSeeds(seeds [2]uint64) State {
+	return State{Seeds: seeds}
+}
 
 func isPow2(x uint64) bool { return x > 0 && (x&(x-1)) == 0 }
 
@@ -79,8 +86,10 @@ func Step(s State, b uint8) (State, []Event) {
 	s.LastBit = b
 	s.W = ((s.W << 1) | b) & 0x3F
 
-	// Zobrist fold: one XOR into sketch, zero-cost with compiler fusion.
-	s.Sketch ^= ZobristSeedBit[b]
+	// Zobrist fold: one XOR using per-instance seed, fused into hot path.
+	// Fold both bit value and window state to avoid sketch collapse on
+	// streams with equal 0/1 counts (XOR self-inverse property).
+	s.Sketch ^= s.Seeds[b] + uint64(s.W)
 
 	return s, evs
 }
