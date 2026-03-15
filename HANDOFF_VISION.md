@@ -402,7 +402,12 @@ The authoritative reading: **seeds label trajectories; geometry changes sensitiv
 **Falsification standard:**
 - **Fail (gain only):** Threshold only rescales each width's existing class ordering. Just louder/quieter copies.
 - **Fail (co-vary):** Width and threshold produce the same family of rankings. Lower effective dimensionality than it appears.
-- **Pass (independent axis):** Threshold causes new class order flips or materially changes temporal burst structure at fixed width. Real second structural axis.
+- **Fail (fragile):** Threshold changes rankings at fixed width, but only on one corpus slice or windowing scheme. Boundary effect, not structural.
+- **Pass (independent axis):** At fixed width, threshold produces stable class-order changes across repeated slices/windowing schemes. Real second structural axis.
+
+**Robustness guard:** A threshold pass only counts as independent if class-order changes are reproducible across more than one corpus slice and more than one windowing scheme. Otherwise it may be a fragile boundary effect.
+
+**Canonical test:** At fixed width, does threshold produce stable class-order changes across repeated slices? Yes → independent structural axis. No → gain/control parameter.
 
 **What to measure:** For each (w, t) pair, produce the sensitivity vector (dil-rate per class). Compute rank correlation between threshold variants at fixed width. If ranks change, threshold is independent. If ranks stay the same with scaled values, threshold is just gain.
 
