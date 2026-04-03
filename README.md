@@ -1,126 +1,85 @@
 # fibtransponder
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev/)
-[![Status](https://img.shields.io/badge/status-draft%20prototype-orange)](#status)
+[![Status](https://img.shields.io/badge/status-v0.1.0%20research%20baseline-blue)](#status)
 [![Spec](https://img.shields.io/badge/spec-docs%2FSPEC.md-blue)](docs/SPEC.md)
 
-`fibtransponder` is a Fibonacci-radix streaming transponder prototype.
+`fibtransponder` `v0.1.0` is a public research-baseline release for a lower-level tokenization / semantic substrate experiment built around a Fibonacci-radix streaming state machine. The repo is intended as a testable substrate for lower-level stream sensing relevant to tokenization and semantic harness research, not as a finished model stack or product layer.
 
-It ingests an unbounded boolean stream and maintains a deterministic, bounded-work state machine over that stream.
+## Canonical thesis
 
-**Source of truth:** `docs/SPEC.md`
+- The FSVM is the contribution.
+- Seed-only calibration is falsified.
+- Structural calibration via adjacency width is demonstrated.
+- Width selects locality sensitivity.
+- Threshold is a planned second axis, not yet a proven result.
 
----
+## What this repo currently proves
 
-## What it is
+- A deterministic FSVM can ingest a bitstream with bounded per-step work while tracking dilation, zero-run markers, and a cheap state sketch. See `docs/SPEC.md` and `docs/BENCHMARKS.md`.
+- Seed-only calibration does not create detector diversity. Different Zobrist seed tables change sketch identity, but not event structure. See `REPORT_CORPUS.md`.
+- Structural calibration is real when geometry changes. Varying adjacency width changes class sensitivity ranking, including a prose-first to code-first shift across widths. See `REPORT_STRUCTURAL.md`.
+- Adjacency width already acts as a locality-sensitivity selector. Width is the demonstrated control axis in this release.
 
-A measurement-first stream core that tracks:
+## What is not claimed
 
-- adjacency events (`11`) → retrospective dilation events
-- sparse long-zero markers (`8, 16, 32, ...` by default)
-- a 6-bit rolling local window
-- bounded O(1) (or amortized O(1)) ingest work
+- This release does not claim threshold-based structural calibration. Threshold is next work, not current evidence.
+- This release does not claim tokenizer replacement, transformer replacement, or agent superiority.
+- This release does not claim that the current sketch is a sufficient semantic identity mechanism on its own.
+- This release does not claim broad convergence or proprioceptive control results beyond what is directly documented in this repo.
 
-Core state entities:
+## Reading order
 
-- `r`: global dilation exponent
-- `w`: 6-bit rolling hexagram window
-- `lastBit`: previous observed bit
-- `zeroRun`: current zero-run length
+1. `README.md`
+2. `docs/SPEC.md`
+3. `HANDOFF_VISION.md`
+4. `REPORT_STRUCTURAL.md`
 
-## What it is not
+Then read:
 
-- not a generic LLM wrapper
-- not an orchestration framework
-- not a finished product with closed semantics
-
----
-
-## Demo
-
-![fibtransponder TUI demo](docs/media/fibtransponder-tui-hero.gif)
-
-> Live view of bounded streaming ingest with rolling state/probe feedback.
-
-If the preview does not render on your surface, open: `docs/media/fibtransponder-tui-hero.gif`
-
----
-
-## Quickstart
-
-### Build + test
-
-```bash
-go test ./...
-```
-
-### Run TUI
-
-```bash
-cd cmd/tui
-go build -o fibtransponder_tui
-./fibtransponder_tui
-```
-
-Example:
-
-```bash
-echo "010101100101" | ./fibtransponder_tui
-```
-
-### Run API
-
-```bash
-cd cmd/api
-go build -o fibtransponder_api
-./fibtransponder_api
-```
-
-Default listen address: `http://localhost:8080`.
-
----
-
-## Spec highlights
-
-- **Indexing:** `bit[i] ↔ F_{i+2}`
-- **Canonical Zeckendorf words:** no adjacent `1`s
-- **Dilation semantics:** when `11` is observed, increment `r` and interpret retroactively as virtual stuffing
-- **Segmentation:** allowed, not forced; sparse candidate boundaries only
-- **Safety:** bounded ingest, linear memory growth, budgeted rendering
-
----
-
-## Repo layout
-
-- `docs/SPEC.md` — authoritative draft spec
-- `docs/DESIGN.md` — implementation architecture notes
-- `docs/SIGNAL.md` — probe/signal decomposition notes
-- `docs/APPLICATIONS.md` — constrained downstream use-cases
-- `internal/fsvm` — core streaming state machine
-- `internal/bitrope` — append-only bitstream substrate
-- `internal/signal` — signal/decomposition layer
-- `internal/segauto` — segmentation automaton experiments
-- `internal/rosetta` — marker/probe experiments
-- `internal/render` — bounded rendering
-- `cmd/tui` — terminal UI
-- `cmd/api` — API surface
-- `test/` — tests (legacy suite is build-tagged)
-
----
-
-## Publish checklist
-
-- [x] README aligned to `docs/SPEC.md`
-- [x] Core docs (`SPEC`, `DESIGN`, `APPLICATIONS`) internally consistent
-- [x] Build artifacts removed from version control
-- [x] `go test ./...` passing
-- [ ] Tag first public release
-- [~] Add screenshot/GIF to showcase TUI flow (placeholder added at `docs/media/fibtransponder-tui-hero.gif`)
-
----
+- `REPORT_CORPUS.md` for the seed-only falsification result
+- `docs/BENCHMARKS.md` for baseline performance context
 
 ## Status
 
-Draft implementation + research surface around `docs/SPEC.md`.
+`v0.1.0` is a research baseline release. It packages the current FSVM-centered thesis, the falsification of seed-only calibration, and the demonstrated structural result from adjacency width. Second-axis threshold work is explicitly next and is not included in the claims of this release.
 
-Open semantic questions remain explicit in the spec (e.g. exact `N(r)` meaning, dilated-probe definitions, marker equations).
+## Canonical checks
+
+The boring release check is:
+
+```bash
+make ci
+```
+
+That runs:
+
+- `go vet ./...`
+- `go test ./... -count=1 -timeout=120s`
+- `go test ./internal/deltaqueue/ -v -run "TestInvariant|TestClassifier" -count=1 -timeout=60s`
+
+For direct local testing:
+
+```bash
+go test ./... -count=1
+```
+
+## Repo guide
+
+- `docs/SPEC.md` — source-of-truth FSVM semantics and explicit open questions
+- `HANDOFF_VISION.md` — canonical research-direction document
+- `REPORT_CORPUS.md` — evidence that seed-only calibration is falsified
+- `REPORT_STRUCTURAL.md` — evidence that structural calibration via width is demonstrated
+- `docs/BENCHMARKS.md` — baseline performance notes
+- `docs/RELEASE_CHECKLIST.md` — release hygiene checklist for this repo
+
+Historical or subsystem-specific documents:
+
+- `BUILD_ORDER.md` — historical implementation order for the `internal/deltaqueue` sidecar work
+- `CONFORMANCE_TARGETS.md` — `internal/deltaqueue` conformance and benchmark targets
+- `IMPLEMENTATION_GAPS.md` — historical gap log for the `internal/deltaqueue` sidecar
+- `HANDOFF.md` — implementation handoff packet for the `internal/deltaqueue` subsystem
+
+## Release scope
+
+This release is for packaging, alignment, and reproducibility. It is not a feature-expansion release. The FSVM hot path is kept intact aside from release hygiene, and unproven second-axis experiments are intentionally left out of `v0.1.0`.

@@ -1,6 +1,7 @@
 # IMPLEMENTATION_GAPS
 
-Scope: mechanical gap inventory against `delta-queue-spec (2).md` and `delta-classifier-constants (4).md`.
+Status: historical gap inventory for the `internal/deltaqueue` sidecar work.
+Scope: mechanical gap inventory against `delta-queue-spec (2).md` and `delta-classifier-constants (4).md`. This should not be read as the top-level roadmap for the repo's research baseline release.
 
 ## Present (skeleton only)
 - `CoreDelta`, `DerivedDelta`, `ClassifierState`, `AuxBuckets`, `Subscription` type skeletons.

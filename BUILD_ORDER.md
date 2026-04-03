@@ -1,6 +1,7 @@
 # BUILD_ORDER
 
-Scope: mechanical order only, following existing spec text.
+Status: historical and subsystem-specific.
+Scope: mechanical implementation order for `internal/deltaqueue/`, following the sidecar spec text. This is not the top-level product or research story for the repo; start with `README.md`, `docs/SPEC.md`, and `HANDOFF_VISION.md` for that.
 
 1. Freeze the interface surface (done)
    - Keep type and function signatures aligned with spec names.

@@ -1,5 +1,8 @@
 # CONFORMANCE_TARGETS
 
+Status: subsystem-specific reference for `internal/deltaqueue/`.
+This file tracks queue/classifier conformance and benchmark targets. It is not a summary of the repo's primary research claims; use `README.md`, `HANDOFF_VISION.md`, `REPORT_CORPUS.md`, and `REPORT_STRUCTURAL.md` for the release-level story.
+
 Source documents:
 - `delta-classifier-constants (4).md`
 - `delta-queue-spec (2).md`
