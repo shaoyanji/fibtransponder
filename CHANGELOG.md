@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1-dev]
+
+- Post-release polish and public-surface fixes only.
+- Public surface sync, badge/link cleanup, and feedback-driven clarity fixes.
+- No new scientific claims are introduced in this development window.
+
 ## [0.1.0] - 2026-04-03
 
 Initial public research-baseline release.
