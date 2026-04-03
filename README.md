@@ -1,10 +1,11 @@
 # fibtransponder
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev/)
-[![Status](https://img.shields.io/badge/status-v0.1.0%20research%20baseline-blue)](#status)
+[![Status](https://img.shields.io/badge/status-v0.1.1%20public%20surface%20sync-blue)](#status)
 [![Spec](https://img.shields.io/badge/spec-docs%2FSPEC.md-blue)](docs/SPEC.md)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-`fibtransponder` `v0.1.0` is a public research-baseline release for a lower-level tokenization / semantic substrate experiment built around a Fibonacci-radix streaming state machine. The repo is intended as a testable substrate for lower-level stream sensing relevant to tokenization and semantic harness research, not as a finished model stack or product layer.
+`fibtransponder` `v0.1.1` is a public-surface consistency release on top of the `v0.1.0` research baseline for a lower-level tokenization / semantic substrate experiment built around a Fibonacci-radix streaming state machine. The repo is intended as a testable substrate for lower-level stream sensing relevant to tokenization and semantic harness research, not as a finished model stack or product layer.
 
 ## Canonical thesis
 
@@ -27,6 +28,7 @@
 - This release does not claim tokenizer replacement, transformer replacement, or agent superiority.
 - This release does not claim that the current sketch is a sufficient semantic identity mechanism on its own.
 - This release does not claim broad convergence or proprioceptive control results beyond what is directly documented in this repo.
+- `v0.1.1` introduces no new science; science-facing work is deferred to `0.2.0`.
 
 ## Reading order
 
@@ -42,7 +44,7 @@ Then read:
 
 ## Status
 
-`v0.1.0` is a research baseline release. It packages the current FSVM-centered thesis, the falsification of seed-only calibration, and the demonstrated structural result from adjacency width. Second-axis threshold work is explicitly next and is not included in the claims of this release.
+`v0.1.1` is a polish/sync release that keeps the `v0.1.0` claim boundaries intact while aligning public-facing docs and licensing. It packages no new scientific result. Second-axis threshold work remains future work and is not included in the claims of this release.
 
 ## Canonical checks
 
@@ -82,4 +84,4 @@ Historical or subsystem-specific documents:
 
 ## Release scope
 
-This release is for packaging, alignment, and reproducibility. It is not a feature-expansion release. The FSVM hot path is kept intact aside from release hygiene, and unproven second-axis experiments are intentionally left out of `v0.1.0`.
+This release is for public-surface sync and release hygiene. It is not a feature-expansion release. The FSVM hot path is kept intact, and unproven second-axis experiments are intentionally left out of `v0.1.1`. The next science-facing line is `0.2.0`.

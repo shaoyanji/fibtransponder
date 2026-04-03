@@ -2,11 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.1-dev]
+## [0.1.1] - 2026-04-03
 
-- Post-release polish and public-surface fixes only.
-- Public surface sync, badge/link cleanup, and feedback-driven clarity fixes.
-- No new scientific claims are introduced in this development window.
+Polish/sync release to align the public repo surface with the released research baseline.
+
+### Added
+
+- MIT `LICENSE` at repo root.
+- `RELEASE_NOTES_v0.1.1.md` for public-surface consistency release notes.
+
+### Changed
+
+- Synced `README.md` status/version language to `v0.1.1` polish/sync scope.
+- Clarified roadmap/checklist wording for settled licensing and release hygiene.
+
+### Claim Boundaries (Unchanged)
+
+- FSVM remains the contribution under test.
+- Seed-only calibration remains falsified.
+- Structural calibration via adjacency width remains demonstrated.
+- Threshold second-axis work remains future work.
+- No tokenizer replacement, transformer replacement, or agent-superiority claims are introduced.
+
+### Next Work
+
+- `0.1.1` is polish-only.
+- Science-facing expansion is deferred to `0.2.0`.
 
 ## [0.1.0] - 2026-04-03
 

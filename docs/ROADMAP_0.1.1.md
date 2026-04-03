@@ -1,6 +1,6 @@
 # 0.1.1 Scope Note
 
-`0.1.1-dev` is reserved for post-release polish only.
+`0.1.1` is reserved for post-release polish only.
 
 Allowed scope:
 
@@ -15,3 +15,7 @@ Out of scope:
 - threshold-axis experiments
 - broader semantic claims
 - tokenizer replacement / transformer replacement claims
+
+Post-`0.1.1` direction:
+
+- science-facing expansion is deferred to `0.2.0`

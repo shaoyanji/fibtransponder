@@ -22,6 +22,7 @@ Use this checklist before tagging a public release.
 - [ ] `CHANGELOG.md` has an entry for the release.
 - [ ] `RELEASE_NOTES_<version>.md` exists and matches the release scope.
 - [ ] CI workflow is present and visible in `.github/workflows/`.
+- [ ] `LICENSE` is present and matches the project licensing policy.
 
 ## Release action
 
@@ -31,4 +32,4 @@ Use this checklist before tagging a public release.
 
 ## Open TODOs
 
-- [ ] Confirm public licensing policy before adding `LICENSE`.
+- [ ] Confirm claim boundaries are unchanged from the prior science-facing release.

@@ -47,4 +47,4 @@ This release makes the repo presentable as a public research baseline. It is a p
 
 - Threshold as a second calibration axis is next work, not done work.
 - The sketch should not be read as a stand-alone semantic identity proof.
-- Public licensing remains unresolved in this release; no license file was added because policy could not be inferred from the repo contents.
+- Public licensing was unresolved at the time of this `v0.1.0` note. This was resolved in `v0.1.1` by adding MIT `LICENSE`.
