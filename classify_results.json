@@ -1,0 +1,16 @@
+{
+  "train_accuracy": 0.9157894736842105,
+  "test_accuracy": 0.9157894736842105,
+  "per_class": {
+    "code": 0.8490566037735849,
+    "noise": 1,
+    "prose": 1
+  },
+  "n_test": 190,
+  "n_transponders": 0,
+  "feature_dim": {
+    "code": 106,
+    "noise": 10,
+    "prose": 74
+  }
+}
