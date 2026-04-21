@@ -3,7 +3,7 @@
 #show: ieee.with(
   title: [Proprioceptive State Machines: Fibonacci-Radix Streaming Computation with Structural Calibration],
   abstract: [
-    We present the Fibonacci-radix Streaming Virtual Machine (FSVM), a deterministic state machine that processes boolean streams at O(1) per bit with zero heap allocation. The FSVM detects adjacency violations in Zeckendorf-coherent representations, emitting dilation events that retrospectively rescale semantic indices without rewriting data. We prove that structural calibration---varying geometric parameters such as adjacency width and marker threshold---produces independent sensitivity profiles across differently-calibrated FSVM instances, forming a detector basis set rather than a one-parameter family. Experiments demonstrate that a 3#sym.times 3 array of FSVMs with distinct (width, threshold) configurations produces different class orderings on boolean streams derived from natural language, source code, and synthetic patterns. At 44--74 ns per input bit on commodity hardware, the FSVM operates two to three orders of magnitude faster than learned tokenization pipelines while requiring no vocabulary, no training data, and no language-specific preprocessing.
+    We present the Fibonacci-radix Streaming Virtual Machine (FSVM), a deterministic state machine that processes boolean streams at O(1) per bit with zero heap allocation. The FSVM detects adjacency violations in Zeckendorf-coherent representations, emitting dilation events that retrospectively rescale semantic indices without rewriting data. We demonstrate that structural calibration---varying geometric parameters such as adjacency width and marker threshold---produces independent sensitivity profiles across differently-calibrated FSVM instances, forming a detector basis set rather than a one-parameter family. Experiments demonstrate that a 3#sym.times 3 array of FSVMs with distinct (width, threshold) configurations produces different class orderings on boolean streams derived from natural language, source code, and synthetic patterns. At 44--74 ns per input bit on commodity hardware, the FSVM operates two to three orders of magnitude faster than learned tokenization pipelines while requiring no vocabulary, no training data, and no language-specific preprocessing.
   ],
   authors: (
     (
@@ -69,7 +69,7 @@ When the FSVM observes adjacent 1-bits, it increments the dilation exponent $r$.
 
 $ D(s) = s_0 thin 0 thin s_1 thin 0 thin s_2 thin 0 thin ... thin 0 thin s_{n-1} $
 
-But no data is rewritten. Instead, effective indices shift: position $i$ becomes $i << r$ (conceptually). The dilation exponent $r$ counts the minimum number of zero-insertions needed to make the observed stream Zeckendorf-coherent---free of adjacent 1-bits.
+But no data is rewritten. The dilation exponent $r$ counts the minimum number of zero-insertions needed to make the observed stream Zeckendorf-coherent---free of adjacent 1-bits. Under this interpretation, effective index $i$ would shift to $i << r$ if the stream were rewritten; the FSVM never performs this expansion, using $r$ only as a structural signal.
 
 This connects to Zeckendorf's theorem @zeckendorf1972representation, independently proven by Lekkerkerker @lekkerkerker1972fibbonacci, which establishes that every positive integer has a unique representation as a sum of non-consecutive Fibonacci numbers. The FSVM treats Zeckendorf coherency as a streaming invariant: DILATE events mark violations, and $r$ measures the deviation from coherency.
 
@@ -128,7 +128,7 @@ Varying adjacency width changes which input structures trigger DILATE events. At
   caption: [DILATE rate per (width #sym.times class). Bold = highest rate per row. Different widths are most sensitive to different input classes.],
 ) <tab:width-sensitivity>
 
-Two falsification checks passed: (A) dil-rate ordering is not monotonic across widths (w=1 ranks prose > code; w=2 and w=3 rank code > prose), and (B) the most-sensitive class changes with width. This proves that structural calibration produces different detectors, not rescaled copies of one detector.
+Two falsification checks passed: (A) dil-rate ordering is not monotonic across widths (w=1 ranks prose > code; w=2 and w=3 rank code > prose), and (B) the most-sensitive class changes with width. This establishes that structural calibration produces different detectors, not rescaled copies of one detector.
 
 == Second Axis: Marker Threshold
 
@@ -170,15 +170,17 @@ The output of the array is a $k$-dimensional vector of (dilation rate, marker ra
 
 == Potential Application: Input Layer Replacement
 
+The following is a proposed architecture, not an implemented system. It is included to clarify the design intent behind the transponder array and to motivate the calibration mechanism developed in Section 3.
+
 In a conventional pipeline, text passes through: raw bytes #sym.arrow BPE tokenization #sym.arrow embedding lookup #sym.arrow positional encoding #sym.arrow transformer. The FSVM array could replace the first three stages: raw bytes #sym.arrow UTF-8 bitstream #sym.arrow FSVM array #sym.arrow structural signal #sym.arrow transformer.
 
-In this hypothetical architecture, the "vocabulary" becomes the array calibration, the "context window" becomes the dilation history, and positional encoding is subsumed by the Fibonacci indexing inherent in dilation. This remains future work: Section 6 reports that byte-frequency features currently outperform FSVM features for text classification at small scale.
+In this hypothetical architecture, the "vocabulary" becomes the array calibration, the "context window" becomes the dilation history, and positional encoding is subsumed by the Fibonacci indexing inherent in dilation. Whether this produces useful representations at scale remains an open question: Section 6 reports that byte-frequency features currently outperform FSVM features for text classification at small corpus scales.
 
-== Convergence and Halting
+== Convergence and Halting (Proposed)
 
-Current transformer models halt extrinsically---by reaching a maximum token count or generating an end-of-sequence token. The FSVM array offers intrinsic convergence: the system settles when (1) DILATE rate approaches zero (Zeckendorf coherency achieved), (2) the Zobrist sketch stabilizes (no state transitions detected), and (3) marker frequency drops below threshold (silence).
+Current transformer models halt extrinsically---by reaching a maximum token count or generating an end-of-sequence token. The FSVM array suggests a possible alternative: intrinsic convergence through homeostatic settling. The system would settle when (1) DILATE rate approaches zero (Zeckendorf coherency achieved), (2) the Zobrist sketch stabilizes (no state transitions detected), and (3) marker frequency drops below threshold (silence).
 
-This is homeostatic convergence, analogous to a ball rolling to the bottom of a bowl, rather than the stepwise termination of current architectures. The system does not "finish"; it settles.
+This is analogous to a ball rolling to the bottom of a bowl---the system does not "finish" in the stepwise sense but reaches a quiescent state. Convergence guarantees for this feedback loop are not proven; empirical validation and formal analysis remain future work.
 
 = Related Work
 
