@@ -48,6 +48,7 @@ func stepWord64AllZeros(s State, batch *EventBatch) State {
 	}
 	s.W = w
 	s.LastBit = 0
+	s.BitsProcessed += 64
 
 	// Zero-run extension: check every pow2 crossing in [oldRun+1, oldRun+64].
 	oldRun := s.ZeroRun
@@ -74,6 +75,7 @@ func stepWord64AllOnes(s State, batch *EventBatch) State {
 	}
 	s.LastBit = 1
 	s.ZeroRun = 0
+	s.BitsProcessed += 64
 
 	// Sketch: b==1 every step. W goes through a fixed cycle.
 	w := s.W
@@ -92,6 +94,7 @@ func stepWord64Mixed(s State, word uint64, batch *EventBatch) State {
 	// The compiler can unroll and keep State in registers.
 	for i := 0; i < 64; i++ {
 		b := uint8((word >> i) & 1)
+		s.BitsProcessed++
 
 		// ---- zero run + marker (inlined from Step) ----
 		if b == 0 {
@@ -159,6 +162,7 @@ func stepReconstructEvents(pre State, word uint64, batch EventBatch) (State, []E
 	s := pre
 	for i := 0; i < 64; i++ {
 		b := uint8((word >> i) & 1)
+		s.BitsProcessed++
 		if b == 0 {
 			s.ZeroRun++
 			if s.ZeroRun >= 8 && isPow2(s.ZeroRun) {

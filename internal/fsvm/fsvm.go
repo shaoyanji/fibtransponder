@@ -34,19 +34,20 @@ var DefaultSeeds = [2]uint64{
 }
 
 type State struct {
-	Seeds      [2]uint64 // per-instance Zobrist seed table
-	MixA       uint64    // hash-family multiplier (v2)
-	MixB       uint64    // hash-family addend (v2)
-	MixR       uint8     // hash-family rotation (v2)
-	Sketch     uint64    // Zobrist state sketch
-	SketchDelta uint8    // rolling bits-changed in sketch (v2)
-	ZeroRun    uint64
-	Dilations  uint64
-	Markers    uint64
-	R          uint32 // dilation exponent
-	W          uint8  // 6-bit window
-	LastBit    uint8
-	Width      uint8  // adjacency width (used by calibration/step-width)
+	Seeds       [2]uint64 // per-instance Zobrist seed table
+	MixA        uint64    // hash-family multiplier (v2)
+	MixB        uint64    // hash-family addend (v2)
+	MixR        uint8     // hash-family rotation (v2)
+	Sketch      uint64    // Zobrist state sketch
+	SketchDelta uint8     // rolling bits-changed in sketch (v2)
+	ZeroRun     uint64
+	Dilations   uint64
+	Markers     uint64
+	BitsProcessed uint64  // total bits consumed (for feature timestamps)
+	R           uint32    // dilation exponent
+	W           uint8     // 6-bit window
+	LastBit     uint8
+	Width       uint8     // adjacency width (used by calibration/step-width)
 }
 
 // New returns a State with default seeds.
@@ -69,6 +70,7 @@ func isPow2(x uint64) bool { return x > 0 && (x&(x-1)) == 0 }
 func Step(s State, b uint8) (State, []Event) {
 	b &= 1
 	var evs []Event
+	s.BitsProcessed++
 
 	// update zero run + marker
 	if b == 0 {
