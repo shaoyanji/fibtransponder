@@ -74,17 +74,21 @@
 - Implement small NFA for allowed cuts at candidate markers (started: `internal/segauto`)
 - Define deterministic exemplar extraction rules for UI
 
-## Ingest model
-- Decide whether input is raw bits, spike times, or both via adapter interfaces
-- Implement adapter layer without changing core
+## Ingest model (done 2026-04-23)
+- [x] Decide whether input is raw bits, spike times, or both via adapter interfaces
+- [x] Implement adapter layer without changing core
+  - `internal/adapter` package with Pipeline, PipelineConfig
+  - PushFloat/PushBit/PushByte in; Next/NextWord out
+  - Overlap, windowing, quantization all in adapter; FSVM core unchanged
 
-## Signal decomposition / transforms
-- Windowing over the rope (fixed-size and marker-aligned)
-- Boolean→bipolar conversion (`0→-1, 1→+1`) and mean-centering
-- FFT adapter (radix-2) OR external library hook
-- Walsh–Hadamard transform (WHT) on power-of-two windows
-- Autocorrelation at a small set of lags
-- Multiscale / fractal summaries (box-counting on 2D embedding)
+## Signal decomposition / transforms (done 2026-04-23)
+- [x] Windowing over the rope (fixed-size and marker-aligned)
+- [x] Boolean→bipolar conversion (`0→-1, 1→+1`) and mean-centering
+- [x] FFT adapter (radix-2) OR external library hook
+- [x] Walsh–Hadamard transform (WHT) on power-of-two windows
+- [x] Autocorrelation at a small set of lags
+- [x] Multiscale / fractal summaries (box-counting on 2D embedding)
+- [x] Overlapping window support in multiscale (`SummarizeWindows`, `Slider`)
 
 ## Benchmarks
 - Microbench: ingest cost per bit, per dilation event
