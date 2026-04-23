@@ -232,3 +232,79 @@ func TestBackpressure(t *testing.T) {
 		t.Logf("queue depth: %d", st.QueueDepth)
 	}
 }
+
+// TestMultiscaleIntegration verifies that enabling multiscale analysis
+// produces summaries as bits flow through the pipeline.
+func TestMultiscaleIntegration(t *testing.T) {
+	cfg := PipelineConfig{
+		Medium:             MediumElectrical,
+		FrameSize:          8,
+		Overlap:            0,
+		Transform:          TransformNone,
+		QuantLevels:        2,
+		WindowFn:           window.Rectangular,
+		AnalysisWindowSize: 8,
+		AnalysisOverlap:    4,
+	}
+	p, err := NewPipeline(cfg)
+	if err != nil {
+		t.Fatalf("NewPipeline: %v", err)
+	}
+
+	// Push 16 bits: two full analysis windows (window=8, overlap=4, hop=4)
+	// Bits: 1,1,1,1,0,0,0,0, 1,1,1,1,0,0,0,0
+	for i := 0; i < 16; i++ {
+		if i < 4 || i >= 8 && i < 12 {
+			p.PushBit(1)
+		} else {
+			p.PushBit(0)
+		}
+	}
+	p.Flush()
+
+	// With frameSize=8, overlap=0: processFrame fires after bits 7 and 15
+	// Each frame produces 8 quantized bits (direct pass-through).
+	// Analysis: window=8, overlap=4, hop=4.
+	// First 8 bits → summary at bit 7.
+	// Next 8 bits pushed: bits 8..15. Analysis sees bits 4..11 at bit 11? No,
+	// analysis runs on the quantized output stream, not the input.
+	// Output stream: 8 bits from frame 0, then 8 bits from frame 1 = 16 bits total.
+	// Analysis windows on output:
+	//   window 0: bits 0..7  (emitted after bit 7)
+	//   window 1: bits 4..11 (emitted after bit 11, but frame 1 bits 8..15 arrive
+	//             at bits 8..15 of output, so bit 11 = output bit 3 of frame 1)
+	//   window 2: bits 8..15 (emitted after bit 15)
+	// So we expect 3 summaries.
+
+	sums := p.Summaries()
+	if sums == nil {
+		t.Fatal("expected summaries, got nil")
+	}
+	if len(sums) != 3 {
+		t.Fatalf("expected 3 summaries, got %d", len(sums))
+	}
+
+	// Window 0 and 2 are [1,1,1,1,0,0,0,0] → density 0.5
+	for i, wantDensity := range []float64{0.5, 0.5, 0.5} {
+		if sums[i].OneDensity != wantDensity {
+			t.Errorf("summary %d density: got %f, want %f", i, sums[i].OneDensity, wantDensity)
+		}
+		if sums[i].WindowBits != 8 {
+			t.Errorf("summary %d window bits: got %d, want 8", i, sums[i].WindowBits)
+		}
+	}
+}
+
+// TestMultiscaleIntegrationDisabled verifies no summaries when analysis
+// is not configured.
+func TestMultiscaleIntegrationDisabled(t *testing.T) {
+	p, err := NewElectricalPipeline(8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.PushByte(0xFF)
+	p.Flush()
+	if p.Summaries() != nil {
+		t.Error("expected nil summaries when analysis disabled")
+	}
+}

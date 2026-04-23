@@ -1,5 +1,7 @@
 package multiscale
 
+import "errors"
+
 // Multiscale summaries over boolean streams.
 //
 // Operates on raw bit slices (not FSVM state) so it can be applied to
@@ -116,4 +118,137 @@ func ComputeSummary(bits []byte) Summary {
 		RunLengths:        runs,
 		RunHistogram:      RunLengthHistogram(runs),
 	}
+}
+
+// ------------------------------------------------------------------
+// Overlapping windows
+// ------------------------------------------------------------------
+
+// SummarizeWindows computes a Summary for every window of size windowSize
+// sliding across bits with the given overlap.
+//
+// hop = windowSize - overlap.  The first window covers bits[0:windowSize],
+// the second covers bits[hop:hop+windowSize], and so on.
+// Windows that would extend past the end of the slice are omitted — only
+// full windows are emitted.
+//
+// Setting overlap = 0 yields non-overlapping windows.
+func SummarizeWindows(bits []byte, windowSize, overlap int) ([]Summary, error) {
+	if windowSize <= 0 {
+		return nil, errors.New("window size must be > 0")
+	}
+	if overlap < 0 || overlap >= windowSize {
+		return nil, errors.New("overlap must be in [0, windowSize)")
+	}
+	hop := windowSize - overlap
+	var out []Summary
+	for start := 0; start+windowSize <= len(bits); start += hop {
+		out = append(out, ComputeSummary(bits[start:start+windowSize]))
+	}
+	return out, nil
+}
+
+// Slider computes multiscale summaries over a sliding overlapping window
+// on a streaming bit source.
+//
+// Create with NewSlider, push bits with Push, and read summaries with
+// Summaries.  The zero value is NOT usable.
+type Slider struct {
+	windowSize int
+	overlap    int
+	hop        int
+
+	buf    []byte
+	write  int
+	filled bool
+
+	sinceLast int      // samples since last emitted summary
+	sums      []Summary
+}
+
+// NewSlider creates a sliding-window analyzer.
+//
+// windowSize is the number of bits in each summary window.
+// overlap is the number of bits shared between consecutive windows.
+// hop = windowSize - overlap.
+func NewSlider(windowSize, overlap int) (*Slider, error) {
+	if windowSize <= 0 {
+		return nil, errors.New("window size must be > 0")
+	}
+	if overlap < 0 || overlap >= windowSize {
+		return nil, errors.New("overlap must be in [0, windowSize)")
+	}
+	return &Slider{
+		windowSize: windowSize,
+		overlap:    overlap,
+		hop:        windowSize - overlap,
+		buf:        make([]byte, windowSize),
+	}, nil
+}
+
+// WindowSize returns the configured window size.
+func (s *Slider) WindowSize() int { return s.windowSize }
+
+// Overlap returns the configured overlap.
+func (s *Slider) Overlap() int { return s.overlap }
+
+// Hop returns the advance between consecutive windows.
+func (s *Slider) Hop() int { return s.hop }
+
+// Push feeds bits into the sliding window.
+// Summaries are computed automatically once the window is full.
+func (s *Slider) Push(bits []byte) {
+	for _, b := range bits {
+		s.buf[s.write] = b & 1
+		s.write++
+		if s.write >= s.windowSize {
+			s.write = 0
+			if !s.filled {
+				s.filled = true
+				s.emit()
+				s.sinceLast = 0
+				continue
+			}
+		}
+		if s.filled {
+			s.sinceLast++
+			if s.sinceLast >= s.hop {
+				s.emit()
+				s.sinceLast -= s.hop
+			}
+		}
+	}
+}
+
+// Summaries returns all summaries computed so far.
+// The caller may slice the result to process incrementally.
+func (s *Slider) Summaries() []Summary { return s.sums }
+
+// Flush forces emission of a summary from the current window contents,
+// regardless of hop position.  If the window has not yet filled, Flush
+// is a no-op.
+func (s *Slider) Flush() {
+	if s.filled {
+		s.emit()
+		s.sinceLast = 0
+	}
+}
+
+// Reset clears all state, including buffered bits and emitted summaries.
+func (s *Slider) Reset() {
+	s.write = 0
+	s.filled = false
+	s.sinceLast = 0
+	s.sums = s.sums[:0]
+	for i := range s.buf {
+		s.buf[i] = 0
+	}
+}
+
+func (s *Slider) emit() {
+	frame := make([]byte, s.windowSize)
+	for i := 0; i < s.windowSize; i++ {
+		frame[i] = s.buf[(s.write+i)%s.windowSize]
+	}
+	s.sums = append(s.sums, ComputeSummary(frame))
 }
