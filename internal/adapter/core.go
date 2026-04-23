@@ -34,6 +34,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/shaoyanji/fibtransponder/internal/signal/multiscale"
 	"github.com/shaoyanji/fibtransponder/internal/signal/window"
 )
 
@@ -99,6 +100,12 @@ type PipelineConfig struct {
 
 	// Medium-specific tuning
 	Threshold float64 // for photonic/electrical thresholding
+
+	// Multiscale analysis on the quantized output bit stream.
+	// If AnalysisWindowSize > 0, a multiscale.Slider is attached
+	// to the pipeline and summaries are computed as bits are produced.
+	AnalysisWindowSize int
+	AnalysisOverlap    int
 }
 
 // DefaultConfig returns a sensible default for electrical/bit streams.
@@ -151,6 +158,9 @@ type Pipeline struct {
 	// Overlap management
 	hop int // frameSize - overlap
 
+	// Optional multiscale analysis on output bits
+	slider *multiscale.Slider
+
 	// Thread safety (optional — disabled if mu == nil, but we always init)
 	mu sync.Mutex
 }
@@ -168,6 +178,13 @@ func NewPipeline(cfg PipelineConfig) (*Pipeline, error) {
 	}
 	if p.hop <= 0 {
 		p.hop = cfg.FrameSize // full frames, no overlap
+	}
+	if cfg.AnalysisWindowSize > 0 {
+		slider, err := multiscale.NewSlider(cfg.AnalysisWindowSize, cfg.AnalysisOverlap)
+		if err != nil {
+			return nil, err
+		}
+		p.slider = slider
 	}
 	return p, nil
 }
@@ -296,6 +313,7 @@ func (p *Pipeline) processFrame() {
 	window.Apply(frame, p.cfg.WindowFn)
 
 	// Apply transform
+	before := len(p.out)
 	switch p.cfg.Transform {
 	case TransformFFT:
 		p.quantizeFFT(frame)
@@ -305,6 +323,11 @@ func (p *Pipeline) processFrame() {
 		p.quantizeAutocorr(frame)
 	default:
 		p.quantizeDirect(frame)
+	}
+
+	// Feed newly produced bits into multiscale analysis
+	if p.slider != nil {
+		p.slider.Push(p.out[before:])
 	}
 }
 
@@ -408,4 +431,15 @@ func (p *Pipeline) Stats() Stats {
 		FramesProcessed: p.frameCount,
 		QueueDepth:   len(p.out) - p.outPos,
 	}
+}
+
+// Summaries returns multiscale summaries computed from the quantized output
+// bit stream.  Returns nil if multiscale analysis is not enabled.
+func (p *Pipeline) Summaries() []multiscale.Summary {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.slider == nil {
+		return nil
+	}
+	return p.slider.Summaries()
 }
