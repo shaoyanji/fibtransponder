@@ -1,6 +1,7 @@
 package segauto
 
 import (
+	"math/bits"
 	"testing"
 
 	"github.com/shaoyanji/fibtransponder/internal/fsvm"
@@ -95,5 +96,101 @@ func BenchmarkNFAProcessBit(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		n.ProcessBit(byte(i&1), fsvm.State{}, 0, nil)
+	}
+}
+
+// TestDivergenceTracking verifies sketch snapshots are captured.
+func TestDivergenceTracking(t *testing.T) {
+	n := NewWithBudget(Budget{MaxSegments: 10, MaxExemplars: 2})
+	st := fsvm.State{Sketch: 0xAAAA}
+	n.ProcessBit(1, st, 0, nil)
+	n.ProcessBit(0, fsvm.State{Sketch: 0xBBBB}, 0, []fsvm.Event{{Kind: fsvm.EventMarker}})
+
+	segs := n.Segments()
+	if len(segs) != 1 {
+		t.Fatalf("expected 1 segment, got %d", len(segs))
+	}
+	if segs[0].StartSketch != 0xAAAA {
+		t.Errorf("start sketch: want 0xAAAA, got 0x%04X", segs[0].StartSketch)
+	}
+	if segs[0].EndSketch != 0xBBBB {
+		t.Errorf("end sketch: want 0xBBBB, got 0x%04X", segs[0].EndSketch)
+	}
+	if segs[0].Divergence() != bits.OnesCount64(0xAAAA^0xBBBB) {
+		t.Errorf("divergence mismatch")
+	}
+}
+
+// TestExemplarsByDivergence verifies top segments are selected by sketch change.
+func TestExemplarsByDivergence(t *testing.T) {
+	n := NewWithBudget(Budget{MaxSegments: 10, MaxExemplars: 2})
+
+	// Segment 1: low divergence (sketch changes by 1 bit)
+	n.ProcessBit(1, fsvm.State{Sketch: 0x0000}, 0, nil)
+	n.ProcessBit(0, fsvm.State{Sketch: 0x0001}, 0, []fsvm.Event{{Kind: fsvm.EventMarker}})
+
+	// Segment 2: medium divergence (sketch changes by 8 bits)
+	n.ProcessBit(1, fsvm.State{Sketch: 0x0000}, 0, nil)
+	n.ProcessBit(0, fsvm.State{Sketch: 0x00FF}, 0, []fsvm.Event{{Kind: fsvm.EventMarker}})
+
+	// Segment 3: high divergence (sketch changes by 16 bits)
+	n.ProcessBit(1, fsvm.State{Sketch: 0x0000}, 0, nil)
+	n.ProcessBit(0, fsvm.State{Sketch: 0xFFFF}, 0, []fsvm.Event{{Kind: fsvm.EventMarker}})
+
+	top := n.ExemplarsByDivergence()
+	if len(top) != 2 { // budget is 2
+		t.Fatalf("expected 2 exemplars, got %d", len(top))
+	}
+	// Highest divergence first: segment 3 (16 bits), then segment 2 (8 bits)
+	if top[0].EndSketch != 0xFFFF {
+		t.Errorf("expected highest-divergence segment first, got endSketch=0x%04X", top[0].EndSketch)
+	}
+	if top[1].EndSketch != 0x00FF {
+		t.Errorf("expected second-highest divergence next, got endSketch=0x%04X", top[1].EndSketch)
+	}
+}
+
+// TestExemplarPositionsByDivergence verifies position output.
+func TestExemplarPositionsByDivergence(t *testing.T) {
+	n := NewWithBudget(Budget{MaxSegments: 10, MaxExemplars: 1})
+
+	n.ProcessBit(1, fsvm.State{Sketch: 0x0000}, 0, nil)
+	n.ProcessBit(1, fsvm.State{Sketch: 0x0000}, 0, nil)
+	n.ProcessBit(0, fsvm.State{Sketch: 0xFFFF}, 0, []fsvm.Event{{Kind: fsvm.EventMarker}})
+
+	n.ProcessBit(1, fsvm.State{Sketch: 0x1234}, 0, nil)
+	n.ProcessBit(0, fsvm.State{Sketch: 0x1234}, 0, []fsvm.Event{{Kind: fsvm.EventMarker}})
+
+	poses := n.ExemplarPositionsByDivergence()
+	if len(poses) != 1 { // budget=1, only highest-divergence segment
+		t.Fatalf("expected 1 position list, got %d", len(poses))
+	}
+	if len(poses[0]) != 2 {
+		t.Fatalf("expected 2 positions (start, end-1), got %d", len(poses[0]))
+	}
+	if poses[0][0] != 0 {
+		t.Errorf("expected start=0, got %d", poses[0][0])
+	}
+	if poses[0][1] != 2 {
+		t.Errorf("expected end-1=2, got %d", poses[0][1])
+	}
+}
+
+// TestDivergenceHistogram verifies the histogram shape.
+func TestDivergenceHistogram(t *testing.T) {
+	n := NewWithBudget(Budget{MaxSegments: 10, MaxExemplars: 2})
+
+	n.ProcessBit(1, fsvm.State{Sketch: 0x0000}, 0, nil)
+	n.ProcessBit(0, fsvm.State{Sketch: 0x0001}, 0, []fsvm.Event{{Kind: fsvm.EventMarker}})
+
+	n.ProcessBit(1, fsvm.State{Sketch: 0xFF00}, 0, nil)
+	n.ProcessBit(0, fsvm.State{Sketch: 0x00FF}, 0, []fsvm.Event{{Kind: fsvm.EventMarker}})
+
+	hist := n.DivergenceHistogram()
+	if len(hist) != 2 {
+		t.Fatalf("expected 2 divergence buckets, got %d", len(hist))
+	}
+	if hist[1] != 1 || hist[16] != 1 {
+		t.Errorf("unexpected histogram: %+v", hist)
 	}
 }

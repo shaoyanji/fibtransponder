@@ -2,6 +2,8 @@ package segauto
 
 import (
 	"fmt"
+	"math/bits"
+	"sort"
 
 	"github.com/shaoyanji/fibtransponder/internal/extension"
 	"github.com/shaoyanji/fibtransponder/internal/fsvm"
@@ -29,15 +31,32 @@ type NFA struct {
 
 // Segment records a contiguous run of non-zero bits between candidate cuts.
 type Segment struct {
-	Start uint64 // absolute bit position where segment begins
-	End   uint64 // absolute bit position where segment ends (exclusive)
-	Ones  uint64 // count of 1-bits in segment
+	Start       uint64 // absolute bit position where segment begins
+	End         uint64 // absolute bit position where segment ends (exclusive)
+	Ones        uint64 // count of 1-bits in segment
+	StartSketch uint64 // FSVM sketch at segment start
+	EndSketch   uint64 // FSVM sketch at segment end
+}
+
+// Divergence returns the sketch change across the segment.
+// Higher values mean more structural change occurred.
+func (s Segment) Divergence() int {
+	return bits.OnesCount64(s.StartSketch ^ s.EndSketch)
+}
+
+// Density returns the ratio of 1-bits to segment length (0.0–1.0).
+func (s Segment) Density() float64 {
+	length := s.End - s.Start
+	if length == 0 {
+		return 0
+	}
+	return float64(s.Ones) / float64(length)
 }
 
 // Budget limits output materialization to prevent unbounded growth.
 type Budget struct {
-	MaxSegments int // hard cap on stored segments
-	MaxExemplars int // max exemplars to report per segment
+	MaxSegments  int // hard cap on stored segments
+	MaxExemplars int // max exemplars to report per query
 }
 
 // DefaultBudget returns sensible production defaults.
@@ -81,7 +100,10 @@ func (n *NFA) ProcessBit(b uint8, fsvmState fsvm.State, zeroRunLength uint64, ev
 		} else {
 			out |= 1 << stIn1
 			if n.currentSeg == nil {
-				n.currentSeg = &Segment{Start: n.bitsProcessed - 1}
+				n.currentSeg = &Segment{
+					Start:       n.bitsProcessed - 1,
+					StartSketch: fsvmState.Sketch,
+				}
 			}
 		}
 	}
@@ -111,7 +133,7 @@ func (n *NFA) ProcessBit(b uint8, fsvmState fsvm.State, zeroRunLength uint64, ev
 	// Apply MarkerCut if an EventMarker is present
 	for _, ev := range events {
 		if ev.Kind == fsvm.EventMarker {
-			n.applyMarkerCut()
+			n.applyMarkerCut(fsvmState)
 		}
 	}
 
@@ -120,12 +142,13 @@ func (n *NFA) ProcessBit(b uint8, fsvmState fsvm.State, zeroRunLength uint64, ev
 
 // applyMarkerCut applies the "allowed" cut at a candidate marker:
 // if you're in-message, you may also be in GAP.
-func (n *NFA) applyMarkerCut() {
+func (n *NFA) applyMarkerCut(fsvmState fsvm.State) {
 	in := (n.Mask&(1<<stIn0) != 0) || (n.Mask&(1<<stIn1) != 0)
 	if in {
 		n.Mask |= 1 << stGap
 		if n.currentSeg != nil {
 			n.currentSeg.End = n.bitsProcessed
+			n.currentSeg.EndSketch = fsvmState.Sketch
 			n.flushSegment()
 		}
 	}
@@ -152,8 +175,13 @@ func (n *NFA) Segments() []Segment {
 	return out
 }
 
-// Exemplars returns deterministic sample positions from each segment.
-// Samples are spaced evenly: start, 1/3, 2/3, end (or fewer if budget limited).
+// ------------------------------------------------------------------
+// Exemplar selection strategies
+// ------------------------------------------------------------------
+
+// Exemplars returns deterministic sample positions from each segment
+// using depth-stride (evenly spaced).  This is cheap but structurally
+// blind — it may miss the most informative parts of a segment.
 func (n *NFA) Exemplars() [][]uint64 {
 	out := make([][]uint64, 0, len(n.segments))
 	for _, seg := range n.segments {
@@ -181,6 +209,63 @@ func (n *NFA) sampleSegment(seg Segment) []uint64 {
 	return samples
 }
 
+// ExemplarsByDivergence selects the top-K segments by sketch
+// divergence and returns their boundaries.  Unlike Exemplars(), this
+// is structurally aware: segments where the FSVM sketch changed most
+// are prioritized.
+//
+// The returned slice is sorted by divergence descending.
+func (n *NFA) ExemplarsByDivergence() []Segment {
+	if len(n.segments) == 0 {
+		return nil
+	}
+
+	// Copy so we can sort without mutating stored order.
+	segs := make([]Segment, len(n.segments))
+	copy(segs, n.segments)
+
+	// Sort by divergence descending.
+	sort.Slice(segs, func(i, j int) bool {
+		return segs[i].Divergence() > segs[j].Divergence()
+	})
+
+	limit := n.budget.MaxExemplars
+	if limit > len(segs) {
+		limit = len(segs)
+	}
+	return segs[:limit]
+}
+
+// ExemplarPositionsByDivergence returns sample positions within the
+// top-K divergent segments.  Within each selected segment, positions
+// are chosen at the start and end (where sketch was captured), giving
+// exactly 2×K positions maximum.
+func (n *NFA) ExemplarPositionsByDivergence() [][]uint64 {
+	top := n.ExemplarsByDivergence()
+	out := make([][]uint64, 0, len(top))
+	for _, seg := range top {
+		// Start and end are the most informative positions because
+		// that's where we have sketch snapshots.
+		poses := make([]uint64, 0, 2)
+		poses = append(poses, seg.Start)
+		if seg.End > seg.Start+1 {
+			poses = append(poses, seg.End-1)
+		}
+		out = append(out, poses)
+	}
+	return out
+}
+
+// DivergenceHistogram returns a map from divergence bucket to count.
+// Useful for tuning the budget or understanding stream complexity.
+func (n *NFA) DivergenceHistogram() map[int]int {
+	hist := make(map[int]int)
+	for _, seg := range n.segments {
+		hist[seg.Divergence()]++
+	}
+	return hist
+}
+
 // GetOutput returns the current displayable information from the NFA.
 func (n *NFA) GetOutput() extension.Output {
 	lines := []string{
@@ -190,8 +275,8 @@ func (n *NFA) GetOutput() extension.Output {
 	}
 	if len(n.segments) > 0 {
 		last := n.segments[len(n.segments)-1]
-		lines = append(lines, fmt.Sprintf("  Last segment: bits[%d:%d) ones=%d",
-			last.Start, last.End, last.Ones))
+		lines = append(lines, fmt.Sprintf("  Last segment: bits[%d:%d) ones=%d div=%d",
+			last.Start, last.End, last.Ones, last.Divergence()))
 	}
 	return extension.Output{
 		Title: n.GetTitle(),
