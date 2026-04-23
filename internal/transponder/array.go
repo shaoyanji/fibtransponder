@@ -80,11 +80,38 @@ func (a *Array) Step(b uint8) []Result {
 	return results
 }
 
+// StepWord64 feeds one 64-bit word to all transponders.
+// This is the fast bulk-processing path; events are dropped (same as Step).
+func (a *Array) StepWord64(word uint64) []Result {
+	results := make([]Result, len(a.Transponders))
+	for i := range a.Transponders {
+		t := &a.Transponders[i]
+		t.State, _ = fsvm.StepWord64(t.State, word)
+		results[i] = Result{
+			Name:      t.Name,
+			Dilations: t.State.Dilations,
+			Markers:   t.State.Markers,
+			Sketch:    t.State.Sketch,
+			R:         t.State.R,
+		}
+	}
+	return results
+}
+
 // ProcessStream feeds entire bitstream, returns final results.
 func (a *Array) ProcessStream(bits []uint8) []Result {
 	var last []Result
 	for _, b := range bits {
 		last = a.Step(b)
+	}
+	return last
+}
+
+// ProcessStreamWords feeds a slice of 64-bit words, returns final results.
+func (a *Array) ProcessStreamWords(words []uint64) []Result {
+	var last []Result
+	for _, w := range words {
+		last = a.StepWord64(w)
 	}
 	return last
 }
