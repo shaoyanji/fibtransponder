@@ -14,7 +14,7 @@ type EventBatch struct {
 // Fast paths:
 //   - word == 0       : all zeros; only zero-run / marker logic
 //   - word == ^uint64(0): all ones; only dilation logic
-//   - mixed           : tight inlined loop, zero allocations.
+//   - mixed           : run-based processing (CTZ/CLZ) for branch predictability.
 func StepWord64(s State, word uint64) (State, EventBatch) {
 	var batch EventBatch
 
