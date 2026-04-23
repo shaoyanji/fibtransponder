@@ -45,6 +45,7 @@ func NewWithFamily(id int) State {
 func StepV2(s State, b uint8) (State, []Event) {
 	b &= 1
 	var evs []Event
+	s.BitsProcessed++
 	oldSketch := s.Sketch
 
 	// ---- zero run + marker (identical to Step) ----
@@ -94,6 +95,7 @@ func StepWord64V2(s State, word uint64) (State, EventBatch) {
 func stepWord64V2Mixed(s State, word uint64, batch *EventBatch) State {
 	for i := 0; i < 64; i++ {
 		b := uint8((word >> i) & 1)
+		s.BitsProcessed++
 		oldSketch := s.Sketch
 
 		// Determine events BEFORE mutating state (matches StepV2 order)
