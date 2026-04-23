@@ -1,12 +1,43 @@
 # Benchmarks
 
-Host CPU: Intel(R) Pentium(R) CPU N4200 @ 1.10GHz
+Host CPU: Intel(R) Celeron(R) CPU N3010 @ 1.04GHz
 
-## FSVM (Zobrist-in-core, per-instance seeds)
+## FSVM v1 (Zobrist-in-core, per-instance seeds)
 - Benchmark: `internal/fsvm.BenchmarkStep`
-- Result: ~44–48 ns/op, 0 allocs/op (5-run range: 43.95–47.95)
+- Result: ~44–48 ns/op, 0 allocs/op
 - Zobrist sketch folded into core Step(): `s.Sketch ^= s.Seeds[b] + uint64(s.W)`
 - Each instance owns its seed table via `NewWithSeeds()`
+
+## FSVM v2 (independent hash families, avalanche mixer)
+- Benchmark: `internal/fsvm.BenchmarkStepV2`
+- Result: ~61 ns/op (bit-by-bit), 0 allocs/op
+- `mixSketch(sk, a, b, r) = bits.RotateLeft64(sk*a + b, r)`
+- Rich folding: zeroRun, R, seeds, event salts
+- `SketchDelta` tracks per-step bit changes
+
+## FSVM v2 word-level fast path
+- Benchmark: `internal/fsvm.BenchmarkStepWord64V2`
+- Result: ~32 ns/op per bit (mixed word), 0 allocs/op
+- 3× faster than 64× bit-by-bit for bulk throughput
+
+## Proprioceptive calibration
+- Benchmark: `internal/calibration.BenchmarkStepWord64Adaptive`
+- Result: ~53 ns/op mixed, 0 allocs/op
+- Same as non-adaptive; calibration fires every 256 bits (configurable)
+
+## Rich feature extraction
+- Benchmark: `internal/fsvm.BenchmarkExtractorExtract`
+- Result: ~820 ns/op, 0 allocs/op
+- 64-bit rolling window, 8 sub-regions
+
+## Rich feature integration
+- Benchmark: `internal/fsvm.BenchmarkStepWithExtractor`
+- Result: ~97 ns/op, 0 allocs/op
+- Overhead only when events fire (sparse)
+
+## Descriptor distance
+- Benchmark: `internal/fsvm.BenchmarkDescriptorDistance`
+- Result: ~15 ns/op, 0 allocs/op
 
 ## Classifier (read-only sketch)
 - Benchmark: `internal/deltaqueue.BenchmarkClassify`

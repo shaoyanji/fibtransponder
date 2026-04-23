@@ -23,6 +23,7 @@ Use event-derived summaries as a robust channel signature:
 - zero-run distribution
 - marker cadence
 - window histogram drift over time
+- **descriptor clusters** (rich features): local motif repetition signatures
 
 This is an operational fingerprinting use-case, not a claim of full semantic decoding.
 
@@ -33,10 +34,20 @@ Treat observed bits as a time series and build bounded adapters:
 - windowed autocorrelation
 - Walsh–Hadamard summaries on fixed windows
 - optional FFT views on mapped bipolar forms
+- **descriptor matching**: nearest-neighbour search over FeatureBuffer for motif detection
 
 Important: any frequency-domain interpretation should be annotated with `r`/marker context due to retrospective dilation semantics.
 
-## 3) Segmentation-assisted interpretation
+## 3) Structural motif detection
+
+Rich descriptors enable downstream clustering:
+
+- `FeatureBuffer.Match(query)` finds nearest historical descriptor
+- L1 distance or cosine similarity measures local structural similarity
+- repeated motifs produce tight descriptor clusters
+- useful for detecting recurring byte patterns, packet headers, or sync words
+
+## 4) Segmentation-assisted interpretation
 
 At sparse candidate cut points, downstream tooling may evaluate cut/no-cut alternatives.
 
@@ -46,22 +57,25 @@ Constraints:
 - ambiguity represented symbolically (automata), not full enumeration
 - outputs remain bounded under worst-case streams
 
-## 4) Visual operator tooling
+## 5) Visual operator tooling
 
 UI/API surfaces can expose:
 
 - live `r`, zero-run, marker metrics
 - bounded summaries of segment hypotheses
 - probe snapshots for debugging and tuning
+- **feature trajectory plots**: descriptor evolution over time
 
 Rendering stays budgeted and non-blocking for ingest.
 
-## 5) Sync/fingerprint probes (Rosetta layer)
+## 6) Sync/fingerprint probes (Rosetta layer)
 
 Optional research probes:
 
 - modular fingerprints (`N mod p_i`)
 - magnitude/log2 bounds via asymptotics
+- **sketch convergence detection**: use `sketchDelta` to detect steady-state
+- **proprioceptive calibration**: auto-tune width/threshold for incoming stream class
 
 These remain outside core correctness until dilation semantics for each probe are fully locked.
 
