@@ -30,11 +30,11 @@ func FamilyCount() int { return len(HashFamilies) }
 func NewWithFamily(id int) State {
 	f := HashFamilies[id%FamilyCount()]
 	s := State{
-		Seeds:  DefaultSeeds,
-		MixA:   f.A,
-		MixB:   f.B,
-		MixR:   f.R,
-		Width:  1,
+		Seeds: DefaultSeeds,
+		MixA:  f.A,
+		MixB:  f.B,
+		MixR:  f.R,
+		Width: 1,
 	}
 	return s
 }
@@ -85,13 +85,122 @@ func StepV2(s State, b uint8) (State, []Event) {
 }
 
 // StepWord64V2 is the word-level fast path for sketch v2.
+//
+// V2's sketch depends on per-step event payloads (R values, zero-run
+// lengths), making bulk fast paths extremely complex.  We retain a
+// bit-by-bit loop but improve branch predictability by hoisting the
+// event-prediction logic ahead of state mutation.  On adversarial
+// patterns the compiler can keep the hot path in registers.
 func StepWord64V2(s State, word uint64) (State, EventBatch) {
 	var batch EventBatch
+
+	// ---- fast path: all zeros --------------------------------------------
+	if word == 0 {
+		s = stepWord64V2AllZeros(s, &batch)
+		batch.FinalR = s.R
+		return s, batch
+	}
+
+	// ---- fast path: all ones ---------------------------------------------
+	if word == ^uint64(0) {
+		s = stepWord64V2AllOnes(s, &batch)
+		batch.FinalR = s.R
+		return s, batch
+	}
+
+	// ---- general mixed word: reduced-branch loop -------------------------
 	s = stepWord64V2Mixed(s, word, &batch)
 	batch.FinalR = s.R
 	return s, batch
 }
 
+// stepWord64V2AllZeros handles a word of all zeros.
+// Markers occur at power-of-two crossings within the zero run.
+func stepWord64V2AllZeros(s State, batch *EventBatch) State {
+	startRun := s.ZeroRun
+	for i := 0; i < 64; i++ {
+		s.ZeroRun = startRun + uint64(i) + 1
+		oldSketch := s.Sketch
+
+		var evs []Event
+		if s.ZeroRun >= 8 && isPow2(s.ZeroRun) {
+			s.Markers++
+			batch.MarkerCount++
+			evs = append(evs, Event{Kind: EventMarker, Payload: s.ZeroRun})
+		}
+
+		s.W = (s.W << 1) & 0x3F
+		s.Sketch = mixSketch(s.Sketch, s.MixA, s.MixB, s.MixR)
+		s.Sketch ^= s.Seeds[0] + uint64(s.W)
+		s.Sketch ^= foldZeroRun(s.ZeroRun)
+		s.Sketch ^= uint64(s.R) << 32
+		for _, ev := range evs {
+			s.Sketch ^= eventSalt(ev)
+		}
+		s.SketchDelta = uint8(bits.OnesCount64(oldSketch ^ s.Sketch))
+	}
+	s.LastBit = 0
+	s.BitsProcessed += 64
+	s.ZeroRun = startRun + 64
+	return s
+}
+
+// stepWord64V2AllOnes handles a word of all ones.
+func stepWord64V2AllOnes(s State, batch *EventBatch) State {
+	// Dilations: every bit after the first causes a dilation.
+	startR := s.R
+	if s.LastBit == 1 {
+		for i := 0; i < 64; i++ {
+			s.R = startR + uint32(i) + 1
+			oldSketch := s.Sketch
+
+			s.Dilations++
+			batch.DilateCount++
+			ev := Event{Kind: EventDilate, Payload: uint64(s.R)}
+
+			s.W = ((s.W << 1) | 1) & 0x3F
+			s.Sketch = mixSketch(s.Sketch, s.MixA, s.MixB, s.MixR)
+			s.Sketch ^= s.Seeds[1] + uint64(s.W)
+			s.Sketch ^= foldZeroRun(0)
+			s.Sketch ^= uint64(s.R) << 32
+			s.Sketch ^= eventSalt(ev)
+			s.SketchDelta = uint8(bits.OnesCount64(oldSketch ^ s.Sketch))
+		}
+	} else {
+		// First bit: no dilation
+		s.W = ((s.W << 1) | 1) & 0x3F
+		oldSketch := s.Sketch
+		s.Sketch = mixSketch(s.Sketch, s.MixA, s.MixB, s.MixR)
+		s.Sketch ^= s.Seeds[1] + uint64(s.W)
+		s.Sketch ^= foldZeroRun(0)
+		s.Sketch ^= uint64(s.R) << 32
+		s.SketchDelta = uint8(bits.OnesCount64(oldSketch ^ s.Sketch))
+
+		for i := 1; i < 64; i++ {
+			s.R = startR + uint32(i)
+			oldSketch := s.Sketch
+
+			s.Dilations++
+			batch.DilateCount++
+			ev := Event{Kind: EventDilate, Payload: uint64(s.R)}
+
+			s.W = ((s.W << 1) | 1) & 0x3F
+			s.Sketch = mixSketch(s.Sketch, s.MixA, s.MixB, s.MixR)
+			s.Sketch ^= s.Seeds[1] + uint64(s.W)
+			s.Sketch ^= foldZeroRun(0)
+			s.Sketch ^= uint64(s.R) << 32
+			s.Sketch ^= eventSalt(ev)
+			s.SketchDelta = uint8(bits.OnesCount64(oldSketch ^ s.Sketch))
+		}
+	}
+	s.LastBit = 1
+	s.ZeroRun = 0
+	s.BitsProcessed += 64
+	return s
+}
+
+// stepWord64V2Mixed processes arbitrary words bit-by-bit but with
+// hoisted event detection to reduce branch mispredictions.
 func stepWord64V2Mixed(s State, word uint64, batch *EventBatch) State {
 	for i := 0; i < 64; i++ {
 		b := uint8((word >> i) & 1)
