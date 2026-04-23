@@ -34,14 +34,19 @@ var DefaultSeeds = [2]uint64{
 }
 
 type State struct {
-	Seeds     [2]uint64 // per-instance Zobrist seed table
-	Sketch    uint64    // Zobrist state sketch (XOR-folded per bit)
-	ZeroRun   uint64
-	Dilations uint64
-	Markers   uint64
-	R         uint32 // dilation exponent
-	W         uint8  // 6-bit window
-	LastBit   uint8
+	Seeds      [2]uint64 // per-instance Zobrist seed table
+	MixA       uint64    // hash-family multiplier (v2)
+	MixB       uint64    // hash-family addend (v2)
+	MixR       uint8     // hash-family rotation (v2)
+	Sketch     uint64    // Zobrist state sketch
+	SketchDelta uint8    // rolling bits-changed in sketch (v2)
+	ZeroRun    uint64
+	Dilations  uint64
+	Markers    uint64
+	R          uint32 // dilation exponent
+	W          uint8  // 6-bit window
+	LastBit    uint8
+	Width      uint8  // adjacency width (used by calibration/step-width)
 }
 
 // New returns a State with default seeds.
