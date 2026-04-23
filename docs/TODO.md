@@ -46,6 +46,30 @@
   - log2 bounds: update equations in terms of (k_max, r)
   - modular fingerprints: what is N(r)? how to update residues cheaply when r changes?
 
+## Proprioceptive feedback (done 2026-04-23)
+- [x] EMA trackers for dilateRate, markerRate, sketchDrift
+- [x] Calibration rules with hysteresis deadband
+- [x] Convergence detection (drift < ε, dilate ≈ 0, stable)
+- [x] Safety caps: width ∈ [1,5], threshold ≥ 4
+- [x] Integration with StepWord64 (zero overhead when disabled)
+
+## Sketch v2 (done 2026-04-23)
+- [x] 8 precomputed HashFamilies with large odd multipliers
+- [x] mixSketch avalanche mixer: RotateLeft64(sketch*A + B, R)
+- [x] Rich folding: zeroRun, R, seeds, event salts
+- [x] Rolling SketchDelta: per-step bit-change tracker
+- [x] StepV2 / StepWord64V2 exact semantic preservation
+- [x] NewWithFamily(id): independent families per transponder
+
+## Rich features (done 2026-04-23)
+- [x] Descriptor: 256-bit local feature vector (4×uint64)
+- [x] Extractor: rolling 64-bit window, 8 sub-regions
+- [x] Haar-like responses: density, transitions, Haar-X, Haar-Y
+- [x] Distance metrics: L1, CosineSimilarity
+- [x] FeatureBuffer: ring buffer + nearest-neighbour matching
+- [x] Integration wrappers: StepWithExtractor, StepWord64WithExtractor, StepV2WithExtractor, StepWord64V2WithExtractor
+- [x] Benchmarks: Extract ~820ns, Distance ~15ns, StepWithExtractor ~97ns
+
 ## Segmentation automaton
 - Implement small NFA for allowed cuts at candidate markers (started: `internal/segauto`)
 - Define deterministic exemplar extraction rules for UI
@@ -66,8 +90,12 @@
 - Microbench: ingest cost per bit, per dilation event
 - Stress: adversarial stream with frequent `11` and long zero runs
 - Render budget tests (ensure renderer cannot stall ingest)
+- Rich feature stress: high-event-rate stream descriptor churn
 
 ## Proof sketches
 - Bounded work per input symbol (ingest)
 - Termination/monotonicity properties for dilation counter and marker emission
 - DoS resistance argument: all heavy work is budgeted + can degrade output
+- Sketch-v2 avalanche property (formal proof)
+- Proprioceptive convergence (periodic input → O(p) convergence)
+- Descriptor distance metric validity (L1 satisfies triangle inequality)

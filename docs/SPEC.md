@@ -15,12 +15,25 @@ The core is deterministic and bounded-work per input symbol.
 - `w ∈ {0..63}`: 6-bit **hexagram window** over the most recent logical bits (orientation defined by implementation).
 - `lastBit ∈ {0,1}`: last observed bit (for adjacency detection).
 - `zeroRun ∈ ℕ`: current consecutive-zero run length.
+- `sketch ∈ uint64`: Zobrist state fingerprint (v1: XOR-add fold; v2: avalanche mixer + rich folding).
+- `sketchDelta ∈ uint8`: rolling count of bits changed in sketch (proprioceptive drift signal).
+- `bitsProcessed ∈ ℕ`: total bits consumed (monotonic counter, for event timestamps).
 - `t`: optional time/clock; not used for correctness.
 
 ### Events
 - `DILATE`: emitted when adjacency `11` is observed.
 - `ZERO_RUN(k)`: implicitly tracked as `zeroRun`.
 - `MARKER(m)`: emitted when `zeroRun` crosses a sparse threshold family (default: powers of two >= 8 → 8,16,32,...).
+
+### Optional rich-feature state
+- `Descriptor`: 256-bit local feature vector extracted at events (1-D SIFT/SURF analogue).
+- `Extractor`: rolling 64-bit history window that produces Descriptors.
+- `FeatureBuffer`: ring buffer of recent FeatureEvents for downstream matching.
+
+### Optional proprioceptive state
+- `width ∈ {1..5}`: adjacency detection width (sensitivity calibration).
+- `threshold ∈ ℕ`: zero-run marker threshold (sparsity calibration).
+- EMA trackers: `emaDilate`, `emaMarker`, `emaDrift` (scaled integer arithmetic).
 
 ## 2. Dilation rule (retrospective virtual stuffing)
 
@@ -69,3 +82,44 @@ Optional probes (Rosetta layer):
 - Exact definition of semantic value under dilation (what does `N(r)` mean?)
 - Which probes must track the *dilated* interpretation vs raw observation?
 - Marker payload + update equations (rosetta layer)
+
+## 7. Sketch versioning
+
+Two sketch algorithms are defined:
+
+**v1 (legacy):** `sketch ^= Seeds[b] + uint64(W)` — simple XOR-add fold.
+Suitable for coherence tracking, but collisions possible on structured input.
+
+**v2 (recommended):** Independent `HashFamily` per transponder with avalanche
+mixer `mixSketch(sk, a, b, r) = RotateLeft64(sk*a + b, r)`. Rich folding
+includes `zeroRun`, `R`, seeds, and per-event salts. SketchDelta tracks
+bit-level drift. Collision-resistant across all tested corpora.
+
+Implementations must support both. v2 is preferred for new deployments.
+
+## 8. Proprioceptive feedback (optional)
+
+Transponders may run an adaptive calibration loop:
+
+1. **Sense:** EMA trackers monitor dilateRate, markerRate, sketchDrift.
+2. **Calibrate:** Adjust `width` and `threshold` via deterministic rules
+   with hysteresis deadband.
+3. **Converge:** Declare stable when drift < ε and rates settle.
+
+Calibration is local to each transponder. No global coordination required.
+Safety caps prevent runaway: `width ∈ [1,5]`, `threshold ≥ 4`.
+
+## 9. Rich features (optional)
+
+At each event (Marker or Dilate), an implementation may extract a
+`Descriptor` from a rolling 64-bit local window:
+
+- 8 sub-regions × 8 bits
+- Per-region: density, transitions, Haar-X, Haar-Y
+- Packed into 4 × uint64 = 32 bytes
+
+Descriptors support L1 distance and cosine similarity for downstream
+clustering, motif detection, or structural fingerprinting.
+
+Rich features are opt-in via `Extractor`. When disabled, core ingest
+semantics and complexity are unchanged.

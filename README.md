@@ -19,6 +19,9 @@ A measurement-first stream core that tracks:
 - adjacency events (`11`) → retrospective dilation events
 - sparse long-zero markers (`8, 16, 32, ...` by default)
 - a 6-bit rolling local window
+- a 64-bit Zobrist sketch (v1 or v2) for divergence detection
+- optional proprioceptive feedback: adaptive width/threshold calibration
+- optional rich local descriptors: 1-D SIFT/SURF analogue at event boundaries
 - bounded O(1) (or amortized O(1)) ingest work
 
 Core state entities:
@@ -27,6 +30,10 @@ Core state entities:
 - `w`: 6-bit rolling hexagram window
 - `lastBit`: previous observed bit
 - `zeroRun`: current zero-run length
+- `sketch`: Zobrist state fingerprint
+- `sketchDelta`: rolling drift tracker (v2)
+- `width`: adjacency detection width (adaptive)
+- `bitsProcessed`: monotonic stream position
 
 ## What it is not
 
@@ -96,7 +103,10 @@ Default listen address: `http://localhost:8080`.
 - `docs/DESIGN.md` — implementation architecture notes
 - `docs/SIGNAL.md` — probe/signal decomposition notes
 - `docs/APPLICATIONS.md` — constrained downstream use-cases
-- `internal/fsvm` — core streaming state machine
+- `docs/FORMAL_ANALYSIS.md` — complexity proofs and invariant documentation
+- `internal/fsvm` — core streaming state machine (Step, StepV2, word-level fast paths)
+- `internal/fsvm/rich_features.go` — Descriptor and Extractor (1-D SIFT/SURF)
+- `internal/calibration` — proprioceptive feedback loop (adaptive calibration)
 - `internal/bitrope` — append-only bitstream substrate
 - `internal/signal` — signal/decomposition layer
 - `internal/segauto` — segmentation automaton experiments
