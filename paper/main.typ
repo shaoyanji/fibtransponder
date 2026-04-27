@@ -3,7 +3,7 @@
 #show: ieee.with(
   title: [Proprioceptive State Machines: Fibonacci-Radix Streaming Computation with Structural Calibration],
   abstract: [
-    We present the Fibonacci-radix Streaming Virtual Machine (FSVM), a deterministic state machine that processes boolean streams at O(1) per bit with zero heap allocation. The FSVM detects adjacency violations in Zeckendorf-coherent representations, emitting dilation events that retrospectively rescale semantic indices without rewriting data. We demonstrate that structural calibration---varying geometric parameters such as adjacency width and marker threshold---produces independent sensitivity profiles across differently-calibrated FSVM instances, forming a detector basis set rather than a one-parameter family. Experiments demonstrate that a 3#sym.times 3 array of FSVMs with distinct (width, threshold) configurations produces different class orderings on boolean streams derived from natural language, source code, and synthetic patterns. At 44--74 ns per input bit on commodity hardware, the FSVM operates two to three orders of magnitude faster than learned tokenization pipelines while requiring no vocabulary, no training data, and no language-specific preprocessing.
+    We present the Fibonacci-radix Streaming Virtual Machine (FSVM), a deterministic state machine that processes boolean streams at O(1) per bit with zero heap allocation. The FSVM detects adjacency violations in Zeckendorf-coherent representations, emitting dilation events that retrospectively rescale semantic indices without rewriting data. We demonstrate that structural calibration---varying geometric parameters such as adjacency width and marker threshold---produces independent sensitivity profiles across differently-calibrated FSVM instances, forming a detector basis set rather than a one-parameter family. Experiments demonstrate that a 3#sym.times 3 array of FSVMs with distinct (width, threshold) configurations produces different class orderings on boolean streams derived from natural language, source code, and synthetic patterns. At ≈76 ns per input bit on commodity hardware, the FSVM operates two to three orders of magnitude faster than learned tokenization pipelines while requiring no vocabulary, no training data, and no language-specific preprocessing.
   ],
   authors: (
     (
@@ -28,7 +28,7 @@ We propose a different approach: analog sensing via streaming state machines. In
 
 Our contributions are:
 
-- The *FSVM*: a Fibonacci-radix streaming state machine with O(1) per-bit complexity, zero heap allocation, and built-in Zeckendorf error correction. Benchmarked at 44--74 ns/op on commodity hardware.
+- The *FSVM*: a Fibonacci-radix streaming state machine with O(1) per-bit complexity, zero heap allocation, and built-in Zeckendorf error correction. Benchmarked at ≈76 ns/op on commodity hardware.
 
 - *Structural calibration*: the demonstration that varying geometric parameters (adjacency width, marker threshold) produces independent sensitivity profiles, not just rescaled copies of a single detector. Width selects locality sensitivity; threshold selects event admission sensitivity.
 
@@ -88,10 +88,10 @@ The sketch provides: (a) cheap divergence detection between transponders process
     columns: 4,
     align: (left, right, right, right),
     table.header([Component], [Time], [Space], [Allocs]),
-    [FSVM Step], [44--74 ns], [56 B], [0],
+    [FSVM Step], [≈76 ns], [56 B], [0],
     [StepWidth], [$tilde.eq$ same], [56 B], [0],
-    [BitRope Append], [14--21 ns], [O(n) amort.], [0],
-    [Classifier], [55--87 ns], [O(1)], [0],
+    [BitRope Append], [≈21 ns], [O(n) amort.], [0],
+    [Classifier], [≈93 ns], [O(1)], [0],
     [Array Step ($k$ transponders)], [O($k$)], [O($k$#sym.times 56)], [O($k$)],
   ),
   caption: [Benchmarked on Intel Celeron N3010 / Pentium N4200. All components show 0 heap allocations per call.],
@@ -194,7 +194,7 @@ This is analogous to a ball rolling to the bottom of a bowl---the system does no
 
 = Limitations
 
-The FSVM is proven on boolean streams. Its application to natural language processing is proposed but not yet demonstrated. In a preliminary classification experiment, byte-frequency features (7 dimensions) achieved 100% accuracy on prose/code/structured discrimination while FSVM array features (24 dimensions) achieved 66.7%, suggesting that the current FSVM signal is weaker than simple byte statistics at small corpus scales ($approx$1 KB). Larger corpora and different task formulations may be needed to realize the analog tokenization hypothesis.
+The FSVM is proven on boolean streams. Its application to natural language processing is proposed but not yet demonstrated. In a 5-fold cross-validation classification experiment on small corpora ($approx$1 KB per class), byte-frequency features (7 dimensions) achieved 100% accuracy on prose/code/structured discrimination while FSVM array features (24 dimensions) achieved 66.7%, suggesting that the current FSVM signal is weaker than simple byte statistics at this scale. Larger corpora and different task formulations may be needed to realize the analog tokenization hypothesis.
 
 The transponder array's calibration parameters (adjacency width, marker threshold) are currently hand-set, not learned. The second-axis experiment uses expanded corpora with artificial zero padding; validation on real-world streaming data remains future work.
 
@@ -202,11 +202,13 @@ The Zobrist sketch is not a universal hash---the ADD component introduces linear
 
 The proprioceptive feedback loop (measuring DILATE rate, adjusting sensor geometry, observing signal change) is described but not implemented. Convergence guarantees for the feedback loop are empirical, not proven.
 
+The analog tokenization hypothesis — that structurally calibrated FSVM arrays can supplant learned tokenization for NLP tasks — is empirically falsifiable. A concrete falsification condition is: on a diverse corpus suite totaling >1 MB of natural text, after systematic calibration across widths {1,2,3} and threshold families, the FSVM array signal fails to exceed simple non-learned baselines (byte-frequency histograms, character n-grams) on a battery of standard text classification benchmarks. The current evidence remains preliminary; this condition is untested at scale.
+
 = Conclusion
 
 We have presented the FSVM, a Fibonacci-radix streaming state machine that processes boolean streams at O(1) per bit with zero allocation. We demonstrated that structural calibration---varying geometric parameters rather than hash seeds---produces independent detector sensitivities, establishing a two-dimensional basis set for analog signal sensing.
 
-The FSVM operates at 44--74 ns per input bit on commodity hardware, two to three orders of magnitude faster than learned tokenization pipelines. It requires no vocabulary, no training data, and no language-specific preprocessing. The transponder array architecture replaces discrete tokenization with geometric sensing, drawing on the biological principle of cochlear frequency decomposition.
+The FSVM operates at ≈76 ns per input bit on commodity hardware, two to three orders of magnitude faster than learned tokenization pipelines. It requires no vocabulary, no training data, and no language-specific preprocessing. The transponder array architecture replaces discrete tokenization with geometric sensing, drawing on the biological principle of cochlear frequency decomposition.
 
 The path forward involves testing the array on larger corpora, implementing the proprioceptive feedback loop, and exploring task formulations where bit-level temporal dynamics provide signal that byte-frequency statistics cannot. Whether the analog tokenization hypothesis holds at scale remains an open question---but the computational primitive and the calibration mechanism are now established.
 
