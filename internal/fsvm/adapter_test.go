@@ -71,6 +71,33 @@ func TestByteAdapterMultiByte(t *testing.T) {
 	}
 }
 
+func TestByteAdapterEmpty(t *testing.T) {
+	a := NewByteAdapter([]byte{}, false)
+	_, ok := a.Next()
+	if ok {
+		t.Error("expected exhaustion on empty data")
+	}
+}
+
+func TestByteAdapterMSBEdgeCase(t *testing.T) {
+	// Test MSB-first with byte that has bit pattern triggering edge case
+	data := []byte{0xFF}
+	a := NewByteAdapter(data, true)
+	for i := 0; i < 8; i++ {
+		got, ok := a.Next()
+		if !ok {
+			t.Fatalf("unexpected end at position %d", i)
+		}
+		if got != 1 {
+			t.Errorf("position %d: got %d, want 1", i, got)
+		}
+	}
+	_, ok := a.Next()
+	if ok {
+		t.Error("expected exhaustion after 8 bits")
+	}
+}
+
 func TestWord64Adapter(t *testing.T) {
 	words := []uint64{0x01, 0x02}
 	a := NewWord64Adapter(words)
@@ -121,5 +148,25 @@ func BenchmarkByteAdapterLSB(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = RunAll(s, NewByteAdapter(data, false))
+	}
+}
+
+func TestRunAllV2(t *testing.T) {
+	bits := []byte{1, 1} // two consecutive 1s → one dilation
+	s := NewWithFamily(0)
+	s = RunAllV2(s, NewSliceAdapter(bits))
+	if s.Dilations != 1 {
+		t.Errorf("expected 1 dilation, got %d", s.Dilations)
+	}
+	if s.BitsProcessed != 2 {
+		t.Errorf("expected 2 bits processed, got %d", s.BitsProcessed)
+	}
+}
+
+func TestNewWithSeeds(t *testing.T) {
+	seeds := [2]uint64{0x1234567890abcdef, 0xfedcba0987654321}
+	s := NewWithSeeds(seeds)
+	if s.Seeds[0] != seeds[0] || s.Seeds[1] != seeds[1] {
+		t.Errorf("seeds not set correctly: got %v, want %v", s.Seeds, seeds)
 	}
 }

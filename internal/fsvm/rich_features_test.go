@@ -218,6 +218,30 @@ func TestFeatureBufferMatch(t *testing.T) {
 	}
 }
 
+func TestFeatureBufferClear(t *testing.T) {
+	fb := NewFeatureBuffer(10)
+	fb.Append(FeatureEvent{BitPos: 1})
+	fb.Append(FeatureEvent{BitPos: 2})
+	if len(fb.Events) != 2 {
+		t.Fatalf("expected 2 events before clear, got %d", len(fb.Events))
+	}
+	fb.Clear()
+	if len(fb.Events) != 0 {
+		t.Errorf("expected 0 events after clear, got %d", len(fb.Events))
+	}
+}
+
+func TestFeatureBufferMatchEmpty(t *testing.T) {
+	fb := NewFeatureBuffer(10)
+	idx, dist := fb.Match(Descriptor{1, 2, 3, 4})
+	if idx != -1 {
+		t.Errorf("expected index -1 for empty buffer, got %d", idx)
+	}
+	if dist != 0 {
+		t.Errorf("expected distance 0 for empty buffer, got %d", dist)
+	}
+}
+
 func TestPopCountDescriptor(t *testing.T) {
 	d := Descriptor{0xFF, 0xFF00, 0, 0}
 	if pc := PopCountDescriptor(d); pc != 16 {
