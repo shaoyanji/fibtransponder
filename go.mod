@@ -1,6 +1,6 @@
 module github.com/shaoyanji/fibtransponder
 
-go 1.19
+go 1.25.7
 
 require (
 	github.com/charmbracelet/bubbletea v1.3.10

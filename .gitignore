@@ -52,4 +52,8 @@ Thumbs.db
 
 # Coverage
 *.cover
+
+# Generated evaluation artifacts
+EVALUATION_REPORT.md
+evaluation/raw_data/
 ```

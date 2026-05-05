@@ -1,7 +1,7 @@
 package calibration
 
 import (
-	"math/rand"
+	"math/rand/v2"
 	"testing"
 )
 
@@ -14,10 +14,10 @@ func TestOrthogonality(t *testing.T) {
 	thresholds := []uint64{2, 4, 8, 16, 32}
 
 	// Generate a deterministic synthetic stream with varied patterns
-	rand.Seed(42)
+	rng := rand.New(rand.NewPCG(42, 42))
 	stream := make([]uint8, 10000)
 	for i := range stream {
-		if rand.Float64() < 0.5 {
+		if rng.Float64() < 0.5 {
 			stream[i] = 1
 		} else {
 			stream[i] = 0
@@ -135,10 +135,10 @@ func TestOrthogonality(t *testing.T) {
 // TestSecondAxisIndependence verifies that MarkerThreshold affects marker rate
 // independently from how AdjacencyWidth affects dilate rate.
 func TestSecondAxisIndependence(t *testing.T) {
-	rand.Seed(123)
+	rng := rand.New(rand.NewPCG(123, 123))
 	stream := make([]uint8, 5000)
 	for i := range stream {
-		stream[i] = uint8(rand.Intn(2))
+		stream[i] = uint8(rng.IntN(2))
 	}
 
 	widths := []uint8{3, 8, 13}
@@ -210,10 +210,10 @@ func TestSecondAxisIndependence(t *testing.T) {
 
 // BenchmarkOrthogonalityExperiment measures the cost of running the full grid.
 func BenchmarkOrthogonalityExperiment(b *testing.B) {
-	rand.Seed(42)
+	rng := rand.New(rand.NewPCG(42, 42))
 	stream := make([]uint8, 1000)
 	for i := range stream {
-		stream[i] = uint8(rand.Intn(2))
+		stream[i] = uint8(rng.IntN(2))
 	}
 
 	b.ResetTimer()
