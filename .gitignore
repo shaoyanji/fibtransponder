@@ -1,26 +1,55 @@
-# Binaries / build artifacts
-main
-fibtransponder_tui
-fibtransponder_api
-fibtransponder
+```
+# Go build artifacts
+*.cover
 *.exe
 *.out
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+*.obj
+
+# Go test and coverage
+coverage/
+htmlcov/
 *.test
+*.prof
+*.trace
+*.cov
 
-# Go tooling
-coverage.out
-*.coverprofile
+# Go tools
+go.exe
+go.buildid
 
-# Temp/editor noise
-.DS_Store
+# Build directories
+build/
+dist/
+target/
+
+# Dependencies
+vendor/
+Godeps/
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Editors
+.vscode/
+.idea/
 *.swp
 *.swo
-*~
+*.tmp
 
-# Local scratch / planning artifacts
-morningprompt.txt
-taskwrapper.txt
-research_papers.sh
-projmanager/
-delta-classifier-constants (4).md
-delta-queue-spec (2).md
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+*.cover
+```

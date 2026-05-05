@@ -217,11 +217,15 @@ func TestEventSaltDistinctness(t *testing.T) {
 	s1 := eventSalt(Event{Kind: EventDilate, Payload: 1})
 	s2 := eventSalt(Event{Kind: EventDilate, Payload: 2})
 	s3 := eventSalt(Event{Kind: EventMarker, Payload: 1})
+	s4 := eventSalt(Event{Kind: EventKind(99), Payload: 1}) // unknown event type
 	if s1 == s2 {
 		t.Fatalf("dilate salts with different payload should differ")
 	}
 	if s1 == s3 {
 		t.Fatalf("dilate and marker salts should differ")
+	}
+	if s4 != 0 {
+		t.Fatalf("unknown event type should return salt 0, got %d", s4)
 	}
 }
 
