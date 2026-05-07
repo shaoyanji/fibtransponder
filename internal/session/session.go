@@ -10,6 +10,7 @@ import (
 	"github.com/shaoyanji/fibtransponder/internal/segauto"
 	"github.com/shaoyanji/fibtransponder/internal/signal"
 	"github.com/shaoyanji/fibtransponder/internal/typing_analyzer"
+	"github.com/shaoyanji/fibtransponder/internal/zeck_residual_ext"
 )
 
 // SessionState holds the entire state for one state machine instance.
@@ -42,6 +43,7 @@ func NewSession(sessionID string) *SessionState {
 	s.extensions = append(s.extensions, typing_analyzer.NewAnalyzer())
 	s.extensions = append(s.extensions, entropy_estimator.NewEstimator())
 	s.extensions = append(s.extensions, image_analyzer.NewAnalyzer())
+	s.extensions = append(s.extensions, zkrext.NewEstimator())
 
 	// Initialize outputs
 	// Call ProcessBit on a dummy state to get initial outputs for all extensions
