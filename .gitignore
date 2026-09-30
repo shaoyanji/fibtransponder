@@ -1,4 +1,3 @@
-```
 # Go build artifacts
 *.cover
 *.exe
@@ -9,6 +8,22 @@
 *.dll
 *.dylib
 *.obj
+
+# Extensionless compiled binaries (e.g. `go build ./cmd/classify`)
+/classify
+/dilation_tree
+/fibcompress
+/hilbert_gen
+/hilbert_render
+/langdemo
+/api
+/tui
+/fibtransponder
+/zeck_residual
+
+# Python
+__pycache__/
+*.pyc
 
 # Go test and coverage
 coverage/
@@ -56,4 +71,7 @@ Thumbs.db
 # Generated evaluation artifacts
 EVALUATION_REPORT.md
 evaluation/raw_data/
-```
+
+# Generated classifier output (see cmd/classify — these numbers are not a
+# measured result and must not be cited; see the header of that file)
+/classify_results.json
