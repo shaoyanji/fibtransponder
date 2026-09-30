@@ -36,7 +36,7 @@ func NewSession(sessionID string) *SessionState {
 	// Initialize all extensions
 	// Order might matter if extensions depend on each other's processing order.
 	// segauto should typically process before others that might react to markers.
-	segAutoExt := segauto.New() 
+	segAutoExt := segauto.New()
 	s.extensions = append(s.extensions, segAutoExt)
 	s.extensions = append(s.extensions, rosetta.New())
 	s.extensions = append(s.extensions, signal.NewFeatureExtractor())
@@ -47,24 +47,48 @@ func NewSession(sessionID string) *SessionState {
 
 	// Initialize outputs
 	// Call ProcessBit on a dummy state to get initial outputs for all extensions
-	s.updateExtensionOutputs(0, fsvm.New(), 0, []fsvm.Event{})
+	s.stepExtensions(0, fsvm.New(), 0, []fsvm.Event{})
+	s.RefreshOutputs()
 
 	return s
 }
 
-// updateExtensionOutputs collects outputs from all extensions.
-// It also ensures that all extensions have their ProcessBit method called,
-// typically after the core FSVM has processed a bit.
-func (s *SessionState) updateExtensionOutputs(b uint8, fsvmState fsvm.State, zeroRunLength uint64, fsvmEvents []fsvm.Event) {
-	s.ExtensionOutputs = make([]extension.Output, len(s.extensions))
+// stepExtensions advances every extension's internal state by one input bit.
+//
+// This is the per-bit hot path: it must not render display strings. Calling
+// GetOutput() here would rebuild every extension's human-readable output
+// (each one a handful of fmt.Sprintf calls, several allocating []string) on
+// every single input bit, which dominated ingest cost. Use RefreshOutputs to
+// materialize the display layer.
+func (s *SessionState) stepExtensions(b uint8, fsvmState fsvm.State, zeroRunLength uint64, fsvmEvents []fsvm.Event) {
+	for _, ext := range s.extensions {
+		ext.ProcessBit(b, fsvmState, zeroRunLength, fsvmEvents)
+	}
+}
+
+// RefreshOutputs rebuilds the human-readable ExtensionOutputs from the current
+// extension state. Call this after a batch of ProcessBits, or whenever the
+// display layer is actually read -- not once per input bit.
+func (s *SessionState) RefreshOutputs() {
+	if cap(s.ExtensionOutputs) < len(s.extensions) {
+		s.ExtensionOutputs = make([]extension.Output, len(s.extensions))
+	} else {
+		s.ExtensionOutputs = s.ExtensionOutputs[:len(s.extensions)]
+	}
 	for i, ext := range s.extensions {
-		ext.ProcessBit(b, fsvmState, zeroRunLength, fsvmEvents) // Ensure all extensions are updated
 		s.ExtensionOutputs[i] = ext.GetOutput()
 	}
 }
 
 // ProcessBits takes a string of '0' and '1' and updates the session state.
+//
+// This drives the per-bit ingest path. Display outputs are NOT refreshed here;
+// call RefreshOutputs afterwards.
+//
+// fsvm.Step allocates its own event slice per call (declared inside Step), so
+// there is no caller-side slice to reuse across iterations.
 func (s *SessionState) ProcessBits(bits string) error {
+	var fsvmEvents []fsvm.Event
 	for _, r := range bits {
 		b := uint8(0)
 		switch r {
@@ -80,12 +104,10 @@ func (s *SessionState) ProcessBits(bits string) error {
 		s.ProcessedBits++
 		s.BitRope.AppendBit(b)
 
-		var fsvmEvents []fsvm.Event
 		s.FSVMState, fsvmEvents = fsvm.Step(s.FSVMState, b)
 
 		// Let all extensions process the bit and FSVM events
-		// and then collect their outputs
-		s.updateExtensionOutputs(b, s.FSVMState, s.FSVMState.ZeroRun, fsvmEvents)
+		s.stepExtensions(b, s.FSVMState, s.FSVMState.ZeroRun, fsvmEvents)
 	}
 	return nil
 }

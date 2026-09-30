@@ -267,8 +267,10 @@ func TestCorpusExperiment(t *testing.T) {
 	//    (See assertion #4 below for collision reporting.)
 
 	// 4. Sketch values may collide between transponders for some inputs.
-	//    (This is observed: tight and wide produced identical sketches on prose.)
-	//    Document collisions rather than asserting divergence.
+	//    Collisions are reported rather than asserted: the v1 fold is
+	//    parity-limited, so distinct inputs can legitimately coincide.
+	//    (Previously tight and wide collided on prose before the v1 fold
+	//    was fixed to spread the window across the full 64-bit word.)
 	for _, r := range reports {
 		sketches := make(map[uint64]string)
 		collisions := 0

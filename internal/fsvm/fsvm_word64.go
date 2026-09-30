@@ -44,7 +44,7 @@ func stepWord64AllZeros(s State, batch *EventBatch) State {
 	w := s.W
 	for i := 0; i < 64; i++ {
 		w = (w << 1) & 0x3F
-		s.Sketch ^= s.Seeds[0] + uint64(w)
+		s.Sketch ^= s.sketchTerm(0, w)
 	}
 	s.W = w
 	s.LastBit = 0
@@ -81,7 +81,7 @@ func stepWord64AllOnes(s State, batch *EventBatch) State {
 	w := s.W
 	for i := 0; i < 64; i++ {
 		w = ((w << 1) | 1) & 0x3F
-		s.Sketch ^= s.Seeds[1] + uint64(w)
+		s.Sketch ^= s.sketchTerm(1, w)
 	}
 	s.W = w
 
@@ -116,7 +116,7 @@ func stepWord64Mixed(s State, word uint64, batch *EventBatch) State {
 
 		s.LastBit = b
 		s.W = ((s.W << 1) | b) & 0x3F
-		s.Sketch ^= s.Seeds[b] + uint64(s.W)
+		s.Sketch ^= s.sketchTerm(b, s.W)
 	}
 	return s
 }
@@ -178,7 +178,7 @@ func stepReconstructEvents(pre State, word uint64, batch EventBatch) (State, []E
 		}
 		s.LastBit = b
 		s.W = ((s.W << 1) | b) & 0x3F
-		s.Sketch ^= s.Seeds[b] + uint64(s.W)
+		s.Sketch ^= s.sketchTerm(b, s.W)
 	}
 	return s, evs
 }

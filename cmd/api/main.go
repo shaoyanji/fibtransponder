@@ -52,6 +52,9 @@ func createSessionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Ingest does not render display strings per bit; refresh before serializing.
+	s.RefreshOutputs()
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(s) // Encode the session.SessionState
 }
@@ -81,6 +84,9 @@ func processBitsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ingest does not render display strings per bit; refresh before serializing.
+	s.RefreshOutputs()
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(s) // Encode the session.SessionState
 }
@@ -98,6 +104,9 @@ func getSessionHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
+
+	// Ingest does not render display strings per bit; refresh before serializing.
+	s.RefreshOutputs()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(s) // Encode the session.SessionState

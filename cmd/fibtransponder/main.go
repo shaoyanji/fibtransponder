@@ -51,6 +51,8 @@ func main() {
 	fmt.Println("------------------------")
 
 	// Print summaries from extensions
+	// Ingest does not render display strings per bit; materialize them once here.
+	s.RefreshOutputs()
 	fmt.Println("--- Extension Summaries ---")
 	for _, output := range s.ExtensionOutputs {
 		fmt.Printf("%s:\n", output.Title)

@@ -6,17 +6,76 @@ import (
 )
 
 // TestNewWithFamily verifies each family index produces distinct mixing params.
+// NewWithFamily wraps modulo FamilyCount, so exactly FamilyCount distinct
+// families exist and index i must map to family i%FamilyCount.
 func TestNewWithFamily(t *testing.T) {
-	seen := make(map[uint64]struct{})
-	for i := 0; i < FamilyCount()*3; i++ {
+	seen := make(map[uint64]int)
+	for i := 0; i < FamilyCount(); i++ {
 		s := NewWithFamily(i)
 		key := s.MixA ^ s.MixB<<1 ^ uint64(s.MixR)<<2
-		if _, ok := seen[key]; !ok {
-			seen[key] = struct{}{}
+		if prev, ok := seen[key]; ok {
+			t.Fatalf("family index %d collides with index %d (key=0x%x)", i, prev, key)
 		}
+		seen[key] = i
 	}
 	if len(seen) != FamilyCount() {
 		t.Fatalf("expected %d distinct families, got %d", FamilyCount(), len(seen))
+	}
+	// Wrapping is intentional and must be consistent.
+	for i := 0; i < FamilyCount(); i++ {
+		a, b := NewWithFamily(i), NewWithFamily(i+FamilyCount())
+		if a.MixA != b.MixA || a.MixB != b.MixB || a.MixR != b.MixR {
+			t.Fatalf("NewWithFamily is not periodic mod %d at index %d", FamilyCount(), i)
+		}
+	}
+}
+
+// TestHashFamiliesWellFormed asserts the structural invariants that
+// FORMAL_ANALYSIS.md relies on to prove mixSketch is a bijection:
+//   - every multiplier A is odd (x -> x*A is invertible mod 2^64 only if A is odd)
+//   - rotation amounts are spaced >= 6 bit positions apart
+//
+// An even A silently degrades the mixer to 2-to-1 and destroys bit 63 of the
+// sketch on every step, which is not detectable from a single sample.
+func TestHashFamiliesWellFormed(t *testing.T) {
+	rs := make([]int, 0, FamilyCount())
+	for i, f := range HashFamilies {
+		if f.A&1 == 0 {
+			t.Errorf("HashFamilies[%d].A = 0x%016x is even; must be odd for mixSketch to be a bijection", i, f.A)
+		}
+		if f.A == 0 {
+			t.Errorf("HashFamilies[%d].A is zero; multiplier must be nonzero", i)
+		}
+		if f.R == 0 {
+			t.Errorf("HashFamilies[%d].R is zero; rotation must be nonzero", i)
+		}
+		rs = append(rs, int(f.R))
+	}
+	for i := 1; i < len(rs); i++ {
+		if d := rs[i] - rs[i-1]; d < 6 {
+			t.Errorf("rotation spacing between families %d and %d is %d bits, want >= 6 (R=%d,%d)",
+				i-1, i, d, rs[i-1], rs[i])
+		}
+	}
+}
+
+// TestMixSketchIsBijective verifies, for every family, that mixSketch is
+// actually injective on the 64-bit domain. An even multiplier makes the map
+// 2-to-1, which a single-input test cannot see but a collision sweep can.
+func TestMixSketchIsBijective(t *testing.T) {
+	for i, f := range HashFamilies {
+		// A linear map x -> A*x + B is bijective iff A is odd; rotation is
+		// always bijective, so injectivity reduces to A being invertible.
+		seen := make(map[uint64]uint64, 1<<16)
+		for j := 0; j < 1<<16; j++ {
+			x := uint64(j) * 0x9E3779B97F4A7C15
+			y := mixSketch(x, f.A, f.B, f.R)
+			if prev, ok := seen[y]; ok {
+				t.Fatalf("family %d: mixSketch collision: 0x%016x and 0x%016x both map to 0x%016x",
+					i, prev, x, y)
+			}
+			seen[y] = x
+		}
 	}
 }
 

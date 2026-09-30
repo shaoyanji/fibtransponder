@@ -2,6 +2,7 @@ package transponder
 
 import (
 	"fmt"
+	"math/rand"
 	"testing"
 
 	"github.com/shaoyanji/fibtransponder/internal/fsvm"
@@ -13,18 +14,19 @@ import (
 // Vary only adjacency geometry: w=1, w=2, w=3.
 // Same corpus, same harness as TestCorpusExperiment.
 //
-// FALSIFICATION RULES:
-//   Fail A (gain only): If wider windows just monotonically scale counts
-//     while preserving the same class ordering and same profile shape,
-//     then you still have one detector with different gain.
+// NOTE ON WHAT THESE AXES ARE (asserted below by
+// assertWidthOrderingIsNestedRandomized):
+// Width1/2/3 are NOT independent detectors. They are nested run-length
+// thresholds on one latent variable (the distribution of lengths of
+// consecutive 1-runs), so dilation rate at w=1 is >= w=2 >= w=3 for every
+// possible input, by construction. The experiment below therefore documents
+// *how much* the sensitivity profile shifts, not an independent second axis.
 //
-//   Fail B (no sensitivity shift): If the class that triggers the most
-//     events is the same for all widths, calibration is not changing
-//     which structure each detector is sensitive to.
-//
-//   Pass: If different widths produce distinct class sensitivities or
-//     different temporal event distributions on the same input, then
-//     structural calibration is real.
+// The verdicts printed by this test are observations about one small corpus;
+// the structural invariant is asserted in this file. The threshold axis is a
+// separate matter and is covered by TestSecondAxisCalibration, which asserts
+// that zero markers fire on these corpora and therefore that no independence
+// conclusion is available from them.
 
 var structuralWidths = []StructuralCalibration{
 	{"w=1", Width1},
@@ -181,12 +183,14 @@ func TestStructuralCalibration(t *testing.T) {
 	// ── Falsification analysis ──
 	t.Log("")
 	t.Log("═══════════════════════════════════════════════════════════════")
-	t.Log("FALSIFICATION CHECK")
+	t.Log("FALSIFICATION CHECK (observations, not assertions -- see below)")
 	t.Log("═══════════════════════════════════════════════════════════════")
 	t.Log("")
 
 	// Check A: Do wider windows just monotonically scale counts?
-	// If dil-rates for w=3 < w=2 < w=1 for ALL classes, it's just gain.
+	// Width1/2/3 are nested run-length thresholds, so rates are monotone
+	// decreasing in width for EVERY input by construction. The meaningful
+	// question is not monotonicity but how the *class ranking* shifts.
 	allMonotonic := true
 	for ci := range allReports {
 		r1 := float64(allReports[ci].results[0].Dilations) / float64(allReports[ci].bitCount)
@@ -198,11 +202,11 @@ func TestStructuralCalibration(t *testing.T) {
 	}
 
 	if allMonotonic {
-		t.Log("FAIL A: dil-rates are monotonically decreasing w=1 > w=2 > w=3 for ALL classes")
-		t.Log("        → one detector with different gain, not distinct detectors")
+		t.Log("OBS A: dil-rates strictly decreasing w=1 > w=2 > w=3 for ALL classes")
+		t.Log("        → expected: widths are nested thresholds on 1-run length")
 	} else {
-		t.Log("PASS A: dil-rate ordering is NOT monotonic across widths")
-		t.Log("        → widths change sensitivity profile, not just gain")
+		t.Log("OBS A: dil-rate ordering NOT strictly monotonic across widths")
+		t.Log("        → this happens only when a class has zero dilations at some width (tie)")
 	}
 
 	// Check B: Does the "most sensitive class" change with width?
@@ -229,14 +233,28 @@ func TestStructuralCalibration(t *testing.T) {
 	}
 
 	if allSame {
-		t.Logf("FAIL B: all widths are most sensitive to class '%s'", sensitiveTo[0])
-		t.Log("        → calibration does not shift which structure is most detected")
+		t.Logf("OBS B: all widths are most sensitive to class '%s'", sensitiveTo[0])
+		t.Log("        → no cross-class sensitivity shift on this corpus")
 	} else {
-		t.Log("PASS B: different widths are most sensitive to different classes")
+		t.Logf("OBS B: most-sensitive class differs by width (first = '%s')", sensitiveTo[0])
 		for wi, cls := range sensitiveTo {
 			t.Logf("        %s → most sensitive to '%s'", structuralWidths[wi].Name, cls)
 		}
 	}
+
+	// Assert the structural property that actually holds and that the
+	// "independent axes" narrative depends on being false.
+	for _, cr := range allReports {
+		for wi := 1; wi < len(cr.results); wi++ {
+			prev := cr.results[wi-1].Dilations
+			cur := cr.results[wi].Dilations
+			if cur > prev {
+				t.Errorf("%s: nested-width invariant violated: %s produced %d dilations > %s's %d",
+					cr.label, structuralWidths[wi].Name, cur, structuralWidths[wi-1].Name, prev)
+			}
+		}
+	}
+	assertWidthOrderingIsNestedRandomized(t)
 
 	// Check C: Do temporal distributions differ?
 	// Compare windowed dil-rate variance across widths for each class.
@@ -244,7 +262,6 @@ func TestStructuralCalibration(t *testing.T) {
 	t.Log("Windowed dil-rate variance (σ²):")
 	for _, cr := range allReports {
 		for ti, ws := range cr.windows {
-			_ = ti
 			mean := 0.0
 			for _, w := range ws {
 				mean += w.DilateRate
@@ -259,6 +276,49 @@ func TestStructuralCalibration(t *testing.T) {
 			t.Logf("  %s/%s: mean=%.4f σ²=%.6f", cr.label, structuralWidths[ti].Name, mean, variance)
 		}
 	}
+}
+
+// assertWidthOrderingIsNestedRandomized verifies the nested-width invariant on
+// randomized inputs, independent of the fixed corpora, so that a refactor
+// which breaks the nesting is caught.
+//
+// Width1/2/3 test for a 1-run of length >= 2/3/4. Those events are nested:
+// {run>=4} is a subset of {run>=3}, which is a subset of {run>=2}. So
+// dilation counts are non-increasing in width for EVERY possible input. This
+// is why width is an ordered threshold on one latent variable, not an
+// independent second axis.
+func assertWidthOrderingIsNestedRandomized(t *testing.T) {
+	t.Helper()
+	rng := rand.New(rand.NewSource(20240914))
+	violations := 0
+	const trials = 2000
+	for trial := 0; trial < trials; trial++ {
+		n := 64 + rng.Intn(1024)
+		bits := make([]uint8, n)
+		for i := range bits {
+			if rng.Intn(100) < 55 {
+				bits[i] = 1
+			}
+		}
+		rates := [3]float64{}
+		for wi, w := range []AdjacencyWidth{Width1, Width2, Width3} {
+			st := fsvm.New()
+			for _, b := range bits {
+				st, _ = StepWidth(st, b, w)
+			}
+			rates[wi] = float64(st.Dilations) / float64(n)
+		}
+		if !(rates[0] >= rates[1] && rates[1] >= rates[2]) {
+			violations++
+			if violations <= 3 {
+				t.Errorf("trial %d: rates not nested: w1=%.6f w2=%.6f w3=%.6f", trial, rates[0], rates[1], rates[2])
+			}
+		}
+	}
+	if violations > 0 {
+		t.Errorf("%d/%d randomized streams violated the nested-width invariant", violations, trials)
+	}
+	t.Logf("Nested-width invariant held on %d randomized streams (widths are ordered thresholds, not independent axes)", trials)
 }
 
 func TestStructuralByteCounts(t *testing.T) {

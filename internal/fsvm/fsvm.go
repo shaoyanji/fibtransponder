@@ -33,6 +33,31 @@ var DefaultSeeds = [2]uint64{
 	0x9e3779b97f4a7c15, // bit=1
 }
 
+// sketchWindowSpread mixes the 6-bit window into the full 64-bit word.
+//
+// The window is 0..63, so adding it directly to a seed perturbs only the low
+// bits and leaves the upper 56 bits a function of the seed alone -- collapsing
+// a nominal 64-bit sketch to ~2 bits of real entropy. Multiplying by this odd
+// constant spreads each of the 64 window values across the whole word, so every
+// bit position carries window-dependent entropy.
+const sketchWindowSpread = uint64(0x9E3779B97F4A7C15)
+
+// SketchTerm returns the per-bit Zobrist fold contribution for bit b with
+// window state w.
+//
+// Single source of truth for the v1 fold: every ingest path that maintains a
+// sketch by hand (including the 64-bit word fast paths and the adaptive
+// calibration stepper outside this package) must use this, or its state will
+// silently diverge from fsvm.Step.
+func SketchTerm(seeds [2]uint64, b, w uint8) uint64 {
+	return seeds[b&1] + uint64(w&0x3F)*sketchWindowSpread
+}
+
+// sketchTerm is the method form used on the hot path.
+func (s State) sketchTerm(b, w uint8) uint64 {
+	return SketchTerm(s.Seeds, b, w)
+}
+
 type State struct {
 	Seeds       [2]uint64 // per-instance Zobrist seed table
 	MixA        uint64    // hash-family multiplier (v2)
@@ -96,7 +121,7 @@ func Step(s State, b uint8) (State, []Event) {
 	// Zobrist fold: one XOR using per-instance seed, fused into hot path.
 	// Fold both bit value and window state to avoid sketch collapse on
 	// streams with equal 0/1 counts (XOR self-inverse property).
-	s.Sketch ^= s.Seeds[b] + uint64(s.W)
+	s.Sketch ^= s.sketchTerm(b, s.W)
 
 	return s, evs
 }

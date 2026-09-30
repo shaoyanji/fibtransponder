@@ -1,3 +1,22 @@
+// Command classify is a text classifier DEMONSTRATOR, not a measurement.
+//
+// READ THIS BEFORE CITING ITS OUTPUT (classify_results.json):
+//
+//   - There is no train/test split. TrainAcc and TestAcc are assigned the same
+//     variable, so they are identical by construction and mean nothing.
+//   - n_transponders is a struct field that is never assigned; it serialises 0.
+//   - feature_dim is not a feature dimension. It is the per-class window count.
+//   - This program imports no fibtransponder package. The scoring function
+//     (see score()) is a hand-tuned regex/byte-ratio heuristic whose constants
+//     were adjusted against the errors it reported.
+//   - The corpus is 22 hardcoded string literals, cut into 50%-overlapping
+//     32-byte windows.
+//
+// So the accuracy figure it prints measures a hand-tuned heuristic on its own
+// tuning data. It is NOT evidence about FSVM or transponder behaviour. The
+// genuine transponder-based experiment lives in
+// internal/transponder/classifier_experiment_test.go, which currently reports
+// byte features beating FSVM features (see paper/main.typ).
 package main
 
 import (

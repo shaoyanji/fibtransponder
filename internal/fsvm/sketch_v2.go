@@ -11,16 +11,19 @@ type HashFamily struct {
 	R uint8  // rotation amount
 }
 
-// Precomputed hash families — all multipliers are large odd 64-bit constants.
+// Precomputed hash families — all multipliers are large odd 64-bit constants,
+// and rotation amounts are spaced >= 6 bit positions apart so that
+// composition with an odd multiplier preserves effective independence.
+// TestHashFamiliesWellFormed asserts both invariants.
 var HashFamilies = [8]HashFamily{
 	{A: 0x9e3779b97f4a7c15, B: 0x517cc1b727220a95, R: 7},
 	{A: 0xc6a4a7935bd1e995, B: 0x243f6a8885a308d3, R: 13},
-	{A: 0xff51afd7ed558ccd, B: 0xa4093822299f31d0, R: 17},
-	{A: 0xbd5e6fcb874dd4eb, B: 0x082efa98ec4e6c89, R: 23},
+	{A: 0xff51afd7ed558ccd, B: 0xa4093822299f31d0, R: 19},
+	{A: 0xbd5e6fcb874dd4eb, B: 0x082efa98ec4e6c89, R: 25},
 	{A: 0x636413c45c059c97, B: 0x13198a2e03707344, R: 31},
-	{A: 0x78a5636f43172f60, B: 0xc0e6900f00000001, R: 37},
-	{A: 0xb3e6c1f3e3b8e9d5, B: 0x71d7c0d99e9e9f45, R: 41},
-	{A: 0xdf7e87c6d9e1a0b3, B: 0x28f149d2e6b7c3a9, R: 47},
+	{A: 0x2545f4914f6cdd1d, B: 0xc0e6900f00000001, R: 37},
+	{A: 0xb3e6c1f3e3b8e9d5, B: 0x71d7c0d99e9e9f45, R: 43},
+	{A: 0xdf7e87c6d9e1a0b3, B: 0x28f149d2e6b7c3a9, R: 49},
 }
 
 // FamilyCount returns the number of available hash families.
@@ -71,7 +74,7 @@ func StepV2(s State, b uint8) (State, []Event) {
 
 	// ---- v2 sketch update ----
 	s.Sketch = mixSketch(s.Sketch, s.MixA, s.MixB, s.MixR)
-	s.Sketch ^= s.Seeds[b] + uint64(s.W)
+	s.Sketch ^= s.sketchTerm(b, s.W)
 	s.Sketch ^= foldZeroRun(s.ZeroRun)
 	s.Sketch ^= uint64(s.R) << 32
 	for _, ev := range evs {
@@ -131,7 +134,7 @@ func stepWord64V2AllZeros(s State, batch *EventBatch) State {
 
 		s.W = (s.W << 1) & 0x3F
 		s.Sketch = mixSketch(s.Sketch, s.MixA, s.MixB, s.MixR)
-		s.Sketch ^= s.Seeds[0] + uint64(s.W)
+		s.Sketch ^= s.sketchTerm(0, s.W)
 		s.Sketch ^= foldZeroRun(s.ZeroRun)
 		s.Sketch ^= uint64(s.R) << 32
 		for _, ev := range evs {
@@ -160,7 +163,7 @@ func stepWord64V2AllOnes(s State, batch *EventBatch) State {
 
 			s.W = ((s.W << 1) | 1) & 0x3F
 			s.Sketch = mixSketch(s.Sketch, s.MixA, s.MixB, s.MixR)
-			s.Sketch ^= s.Seeds[1] + uint64(s.W)
+			s.Sketch ^= s.sketchTerm(1, s.W)
 			s.Sketch ^= foldZeroRun(0)
 			s.Sketch ^= uint64(s.R) << 32
 			s.Sketch ^= eventSalt(ev)
@@ -171,7 +174,7 @@ func stepWord64V2AllOnes(s State, batch *EventBatch) State {
 		s.W = ((s.W << 1) | 1) & 0x3F
 		oldSketch := s.Sketch
 		s.Sketch = mixSketch(s.Sketch, s.MixA, s.MixB, s.MixR)
-		s.Sketch ^= s.Seeds[1] + uint64(s.W)
+		s.Sketch ^= s.sketchTerm(1, s.W)
 		s.Sketch ^= foldZeroRun(0)
 		s.Sketch ^= uint64(s.R) << 32
 		s.SketchDelta = uint8(bits.OnesCount64(oldSketch ^ s.Sketch))
@@ -186,7 +189,7 @@ func stepWord64V2AllOnes(s State, batch *EventBatch) State {
 
 			s.W = ((s.W << 1) | 1) & 0x3F
 			s.Sketch = mixSketch(s.Sketch, s.MixA, s.MixB, s.MixR)
-			s.Sketch ^= s.Seeds[1] + uint64(s.W)
+			s.Sketch ^= s.sketchTerm(1, s.W)
 			s.Sketch ^= foldZeroRun(0)
 			s.Sketch ^= uint64(s.R) << 32
 			s.Sketch ^= eventSalt(ev)
@@ -240,7 +243,7 @@ func stepWord64V2Mixed(s State, word uint64, batch *EventBatch) State {
 
 		// v2 sketch update
 		s.Sketch = mixSketch(s.Sketch, s.MixA, s.MixB, s.MixR)
-		s.Sketch ^= s.Seeds[b] + uint64(s.W)
+		s.Sketch ^= s.sketchTerm(b, s.W)
 		s.Sketch ^= foldZeroRun(s.ZeroRun)
 		s.Sketch ^= uint64(s.R) << 32
 		if dilated {

@@ -60,6 +60,30 @@ var thresholdMatrix = []struct {
 
 const secondAxisWindow = 2048 // bits per window
 
+// assertThresholdAxisIsUntestableHere asserts the precondition under which the
+// second-axis analysis is skipped: with zero markers on every config, the
+// threshold axis has no observable effect on this corpus, so no independence
+// conclusion can be drawn from it.
+//
+// This turns the pre-check from a printed observation into a gate, so that if a
+// future corpus change does produce markers, the test fails here instead of
+// silently taking the early-return path.
+func assertThresholdAxisIsUntestableHere(t *testing.T, allReports []jointReport) {
+	t.Helper()
+	total := uint64(0)
+	for _, cr := range allReports {
+		for _, cfg := range cr.configs {
+			total += cfg.markers
+		}
+	}
+	if total != 0 {
+		t.Fatalf("precondition violated: expected zero markers across all configs, got %d; "+
+			"the full second-axis analysis should run instead of returning early", total)
+	}
+	t.Logf("  Asserted: 0 markers across all %d configs -- threshold axis has no observable effect here",
+		len(allReports)*9)
+}
+
 type jointReport struct {
 	label    string
 	bitCount int
@@ -277,14 +301,14 @@ func TestSecondAxisCalibration(t *testing.T) {
 		t.Log("           The current corpora produce no zero runs long enough")
 		t.Log("           to trigger any marker threshold family.")
 		t.Log("           → The threshold axis is UNTESTABLE with current corpora.")
-		t.Log("           → Must expand corpora or adjust threshold families.")
 		t.Log("")
 
-		// Still run dilate-rate verification (threshold should not affect dilation)
-		t.Log("DILATE RATE VERIFICATION (sanity check):")
-		dilateConsistent := true
+		// Assert the structural fact that makes it untestable: StepFull's
+		// dilation branch never reads thresh, so dilation rate is invariant
+		// under the threshold axis at fixed width. This is a property of the
+		// code, not an experimental finding, so it is asserted rather than
+		// printed -- previously this printed "Confirmed." from a tautology.
 		for _, cr := range allReports {
-			// At fixed width, dil-rate should be identical across thresholds
 			widthDilRates := make(map[string][]float64)
 			for _, cfg := range cr.configs {
 				widthDilRates[cfg.widthName] = append(widthDilRates[cfg.widthName], cfg.dilateRate)
@@ -292,17 +316,20 @@ func TestSecondAxisCalibration(t *testing.T) {
 			for wName, rates := range widthDilRates {
 				for i := 1; i < len(rates); i++ {
 					if math.Abs(rates[i]-rates[0]) > 1e-10 {
-						dilateConsistent = false
-						t.Logf("  FAIL: class=%s width=%s: dil-rate varies across thresholds (%.10f vs %.10f)",
+						t.Errorf("class=%s width=%s: dil-rate varies across thresholds (%.10f vs %.10f); "+
+							"threshold must not affect adjacency detection",
 							cr.label, wName, rates[0], rates[i])
 					}
 				}
 			}
 		}
-		if dilateConsistent {
-			t.Log("  PASS: dil-rate is identical across thresholds at fixed width (as expected)")
-			t.Log("        Threshold does not affect adjacency detection. Confirmed.")
-		}
+
+		// Assert the other structural limit: with zero markers, the threshold
+		// axis produces no observable effect at all on this corpus.
+		t.Log("  OK: dil-rate invariant across thresholds at fixed width (structural, asserted)")
+		t.Log("  NOTE: marker-based threshold analysis is unreachable on these corpora;")
+		t.Log("        the code below requires corpora with long zero runs.")
+		assertThresholdAxisIsUntestableHere(t, allReports)
 		return
 	}
 
@@ -445,39 +472,65 @@ func TestSecondAxisCalibration(t *testing.T) {
 				}
 			}
 
-			// Check ranking stability across windows
+			// Check ranking stability across windows.
 			nWin := 0
 			for _, rates := range classWindowRates {
 				nWin = len(rates)
 				break
 			}
 
+			// Ranking produced by the full (non-windowed) analysis, used as
+			// the reference each per-window ranking is compared against.
+			type classRate struct {
+				class string
+				rate  float64
+			}
+			rank := func(vals []classRate) string {
+				sorted := append([]classRate(nil), vals...)
+				for i := 0; i < len(sorted); i++ {
+					for j := i + 1; j < len(sorted); j++ {
+						if sorted[j].rate > sorted[i].rate {
+							sorted[i], sorted[j] = sorted[j], sorted[i]
+						}
+					}
+				}
+				var out string
+				for _, cr := range sorted {
+					out += cr.class + ">"
+				}
+				return out
+			}
+			var full []classRate
+			for class, rates := range classWindowRates {
+				if len(rates) > 0 {
+					full = append(full, classRate{class, rates[len(rates)-1]})
+				}
+			}
+			fullRank := rank(full)
+
 			unstableWindows := 0
 			for w := 0; w < nWin; w++ {
-				type classRate struct {
-					class string
-					rate  float64
-				}
 				var windowRates []classRate
 				for class, rates := range classWindowRates {
 					if w < len(rates) {
 						windowRates = append(windowRates, classRate{class, rates[w]})
 					}
 				}
-				// Sort descending
-				for i := 0; i < len(windowRates); i++ {
-					for j := i + 1; j < len(windowRates); j++ {
-						if windowRates[j].rate > windowRates[i].rate {
-							windowRates[i], windowRates[j] = windowRates[j], windowRates[i]
-						}
-					}
+				if len(windowRates) == 0 {
+					continue
 				}
-				_ = windowRates // rank comparison across windows would go here
+				if rank(windowRates) != fullRank {
+					unstableWindows++
+				}
 			}
 
+			// The declared falsification rule ("fragile" if rankings vary
+			// across windows) is now actually evaluated. Previously this
+			// counter was initialized and never incremented, and the computed
+			// rankings were discarded, so the branch was unreachable.
 			if unstableWindows > 0 {
-				t.Logf("  %s+%s: %d/%d windows have different rankings (FRAGILE)",
-					wn, tn, unstableWindows, nWin)
+				t.Logf("  %s+%s: %d/%d windows have different rankings (FRAGILE, full=%s)",
+					wn, tn, unstableWindows, nWin, fullRank)
 			}
 		}
 	}

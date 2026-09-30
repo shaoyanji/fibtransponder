@@ -219,7 +219,7 @@ func (a *AdaptiveArray) stepOne(t *AdaptiveTransponder, b uint8) (fsvm.State, []
 
 	st.LastBit = b
 	st.W = ((st.W << 1) | b) & 0x3F
-	st.Sketch ^= st.Seeds[b] + uint64(st.W)
+	st.Sketch ^= fsvm.SketchTerm(st.Seeds, b, st.W)
 	st.BitsProcessed++
 
 	return st, evs

@@ -2,6 +2,8 @@ package rosetta
 
 import (
 	"fmt"
+	"math"
+	"sort"
 
 	"github.com/shaoyanji/fibtransponder/internal/extension"
 	"github.com/shaoyanji/fibtransponder/internal/fsvm"
@@ -86,22 +88,42 @@ func (r *Rosetta) GetOutput() extension.Output {
 	return extension.Output{Title: r.GetTitle(), Lines: lines}
 }
 
-// isPerfectSquare checks if x is a perfect square.
-func isPerfectSquare(x uint64) bool {
-	if x == 0 {
-		return true
-	}
-	var i uint64 = 1
-	for i*i <= x {
-		if i*i == x {
-			return true
+// fibTable holds every Fibonacci number representable in uint64 (F0..F93,
+// 94 entries). Built once at init.
+//
+// The loop appends F(n), then appends the final term and stops if the
+// following addition would overflow. Stopping on the addition (rather than on
+// the value about to be appended) is what keeps F93 -- the largest
+// Fibonacci representable in uint64 -- in the table.
+var fibTable = buildFibTable()
+
+func buildFibTable() []uint64 {
+	out := make([]uint64, 0, 94)
+	a, b := uint64(0), uint64(1)
+	for {
+		out = append(out, a)
+		if a > math.MaxUint64-b {
+			out = append(out, b) // F(n+1) is representable; F(n+2) is not
+			break
 		}
-		i++
+		a, b = b, a+b
 	}
-	return false
+	return out
 }
 
-// isFibonacci checks if n is a Fibonacci number.
+// isFibonacci reports whether n is a Fibonacci number.
+//
+// This is a binary search over the 94 uint64-representable Fibonacci numbers:
+// O(log 94) and independent of n.
+//
+// The previous implementation tested the standard 5n²±4 perfect-square
+// identity, but both the O(√x) square scan and the 5*n*n product are unsafe
+// here. isPerfectSquare looped i from 1 upward, so cost grew with the value
+// (~2^(k/2) iterations for a marker at zero-run 2^k), and 5*n*n silently
+// wrapped uint64 for n > ~1.9e9. Because this is reached from the per-bit
+// ingest path on every marker event, a long zero-run stalled ingest for
+// seconds -- the opposite of the unDoSable property the spec claims.
 func isFibonacci(n uint64) bool {
-	return isPerfectSquare(5*n*n + 4) || isPerfectSquare(5*n*n - 4)
+	i := sort.Search(len(fibTable), func(i int) bool { return fibTable[i] >= n })
+	return i < len(fibTable) && fibTable[i] == n
 }
