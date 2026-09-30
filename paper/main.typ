@@ -59,7 +59,7 @@ On each input bit $b in {0, 1}$, the FSVM performs exactly:
 
 3. *Window update*: $W <- ((W << 1) | b) mod 64$
 
-4. *Zobrist fold*: $"sketch" <- "sketch" xor ("Seeds"[b] + W dot 0x9E3779B97F4A7C15)$
+4. *Zobrist fold*: $"sketch" <- "sketch" xor ("Seeds"[b] + W dot #raw("0x9E3779B97F4A7C15"))$
 
 The multiplier on the window term is load-bearing. $W$ takes only 64 values, so adding it directly to a seed perturbs just the low bits and leaves the upper 56 bits a function of the bit counts alone; a nominal 64-bit sketch then admits at most $4 times 256 = 1024$ distinct values. Multiplying by an odd constant spreads each window value across the full word.
 
