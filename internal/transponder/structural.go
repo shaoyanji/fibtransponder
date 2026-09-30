@@ -28,6 +28,7 @@ type StructuralCalibration struct {
 func StepWidth(s fsvm.State, b uint8, width AdjacencyWidth) (fsvm.State, []fsvm.Event) {
 	b &= 1
 	var evs []fsvm.Event
+	s.BitsProcessed++
 
 	// update zero run + marker (unchanged)
 	if b == 0 {
@@ -60,8 +61,11 @@ func StepWidth(s fsvm.State, b uint8, width AdjacencyWidth) (fsvm.State, []fsvm.
 	s.LastBit = b
 	s.W = ((s.W << 1) | b) & 0x3F
 
-	// Zobrist fold (same seeds for all transponders)
-	s.Sketch ^= s.Seeds[b] + uint64(s.W)
+	// Zobrist fold (same seeds for all transponders). Must go through
+	// fsvm.SketchTerm, not an inline seeds[b]+W: the 6-bit window has to be
+	// spread across the full 64-bit word or the sketch collapses to a few
+	// hundred distinct values. See fsvm.SketchTerm and sketch_fold_test.go.
+	s.Sketch ^= fsvm.SketchTerm(s.Seeds, b, s.W)
 
 	return s, evs
 }
