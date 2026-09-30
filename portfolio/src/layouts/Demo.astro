@@ -1,0 +1,149 @@
+---
+import Base from './Base.astro';
+import type { Demo } from '../data/demos';
+import { demos } from '../data/demos';
+
+interface Props {
+  slug: string;
+}
+
+const { slug } = Astro.props;
+const demo = demos.find((d) => d.slug === slug);
+if (!demo) throw new Error(`unknown demo slug: ${slug}`);
+
+const others = demos.filter((d) => d.slug !== slug);
+const idx = demos.findIndex((d) => d.slug === slug);
+const next = demos[(idx + 1) % demos.length];
+---
+
+<Base
+  title={`${demo.title} — fibtransponder`}
+  description={demo.blurb}
+  kicker={demo.kicker}
+  wide
+>
+  <header class="demo-head">
+    <p class="crumbs">
+      <a href="/demos">Demos</a>
+      <span aria-hidden="true"> / </span>
+      <span>{demo.title}</span>
+    </p>
+    <h1>{demo.title}</h1>
+    <p class="lede measure">{demo.detail}</p>
+  </header>
+
+  <slot />
+
+  <nav class="pager" aria-label="Demo navigation">
+    <a class="pager__link panel" href={`/demo/${next.slug}`}>
+      <span class="label">Next</span>
+      <span class="pager__title">{next.title}</span>
+    </a>
+    <a class="pager__link panel" href="/demos">
+      <span class="label">All</span>
+      <span class="pager__title">Back to the index</span>
+    </a>
+  </nav>
+
+  <section class="also">
+    <h2 class="label">Other demos</h2>
+    <ul>
+      {
+        others.map((d) => (
+          <li>
+            <a href={`/demo/${d.slug}`}>
+              <span class="also__title">{d.title}</span>
+              <span class="also__blurb">{d.blurb}</span>
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </section>
+</Base>
+
+<style>
+  .demo-head {
+    margin-bottom: 2rem;
+  }
+
+  .crumbs {
+    font-size: 0.8rem;
+    color: var(--ink-mute);
+    margin-bottom: 0.8rem;
+  }
+  .crumbs a {
+    color: var(--ink-dim);
+  }
+
+  h1 {
+    margin-bottom: 1rem;
+    max-width: 22ch;
+  }
+
+  .lede {
+    font-size: 1.06rem;
+    color: var(--ink-dim);
+    line-height: 1.62;
+  }
+
+  .pager {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 3rem;
+  }
+
+  .pager__link {
+    flex: 1 1 16rem;
+    padding: 1.1rem 1.3rem;
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .pager__link:hover {
+    background: var(--surface-raised);
+  }
+  .pager__title {
+    font-weight: 600;
+    font-size: 0.98rem;
+  }
+
+  .also {
+    margin-top: 2.5rem;
+  }
+  .also ul {
+    list-style: none;
+    padding: 0;
+    margin: 0.85rem 0 0;
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  }
+  .also a {
+    display: block;
+    padding: 0.85rem 1rem;
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    color: inherit;
+    background: var(--surface);
+  }
+  .also a:hover {
+    border-color: var(--brass-dim);
+  }
+  .also__title {
+    display: block;
+    font-weight: 600;
+    font-size: 0.92rem;
+    margin-bottom: 0.2rem;
+  }
+  .also__blurb {
+    display: block;
+    font-size: 0.82rem;
+    color: var(--ink-dim);
+    line-height: 1.5;
+  }
+</style>

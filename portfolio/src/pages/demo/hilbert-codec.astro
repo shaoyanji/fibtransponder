@@ -1,0 +1,1076 @@
+---
+import Demo from '../../layouts/Demo.astro';
+---
+
+<Demo slug="hilbert-codec">
+  <div class="stage panel" data-stage>
+    <p class="stage__loading" data-status>Loading the WebAssembly module…</p>
+
+    <div class="stage__body" data-body hidden>
+      <div class="controls">
+        <fieldset class="seg">
+          <legend class="label">Input</legend>
+          <div class="seg__group" role="radiogroup" aria-label="Input type">
+            <button type="button" data-mode="pattern" aria-pressed="true">Bit pattern</button>
+            <button type="button" data-mode="preset" aria-pressed="false">Generated image</button>
+            <button type="button" data-mode="upload" aria-pressed="false">Your image</button>
+          </div>
+        </fieldset>
+
+        <div class="controls__group" data-group="pattern">
+          <label class="field field--grow">
+            <span class="label">Pattern</span>
+            <select data-pattern></select>
+          </label>
+          <label class="field field--narrow">
+            <span class="label">Length</span>
+            <input type="number" data-length min="16" max="1048576" step="16" value="1024" />
+          </label>
+        </div>
+
+        <div class="controls__group" data-group="preset" hidden>
+          <label class="field field--grow">
+            <span class="label">Preset</span>
+            <select data-preset></select>
+          </label>
+          <label class="field field--narrow">
+            <span class="label">Order (2ⁿ×2ⁿ)</span>
+            <input type="number" data-order min="3" max="7" step="1" value="5" />
+          </label>
+          <label class="field field--narrow">
+            <span class="label">Threshold</span>
+            <input type="number" data-threshold min="0" max="255" step="1" value="128" />
+          </label>
+        </div>
+
+        <div class="controls__group" data-group="upload" hidden>
+          <label class="field field--grow">
+            <span class="label">Upload a PNG</span>
+            <input type="file" accept="image/png" data-file />
+          </label>
+          <label class="field field--narrow">
+            <span class="label">Order (2ⁿ×2ⁿ)</span>
+            <input type="number" data-order-u min="3" max="7" step="1" value="6" />
+          </label>
+          <label class="field field--narrow">
+            <span class="label">Threshold</span>
+            <input type="number" data-threshold-u min="0" max="255" step="1" value="128" />
+          </label>
+        </div>
+      </div>
+
+      <p class="preset-note" data-preset-note></p>
+
+      <!-- Three panels: source, thresholded, and the reveal -->
+      <div class="views">
+        <figure class="view">
+          <figcaption class="label">1 · The traversal path</figcaption>
+          <div class="view__frame">
+            <canvas data-path role="img" aria-label="The Hilbert curve filling a square, drawn over the source image"></canvas>
+          </div>
+          <p class="view__caption">
+            A space-filling curve: one continuous path visiting every pixel once. Neighbours in the
+            square land close together in the bitstream.
+          </p>
+        </figure>
+
+        <figure class="view">
+          <figcaption class="label">2 · Thresholded, in curve order</figcaption>
+          <div class="view__frame">
+            <canvas data-thresholded role="img" aria-label="The same image reduced to one bit per pixel along the curve"></canvas>
+          </div>
+          <p class="view__caption">
+            One bit per pixel, emitted in curve order rather than scanline order. This is the
+            bitstream the codec actually receives.
+          </p>
+        </figure>
+
+        <figure class="view">
+          <figcaption class="label">3 · Decoding a partially-consumed file</figcaption>
+          <div class="view__frame">
+            <canvas data-reveal role="img" aria-label="The image emerging as the compressed file is consumed"></canvas>
+          </div>
+          <label class="reveal-ctl">
+            <span class="label">Compressed bytes consumed</span>
+            <input type="range" data-reveal-pos min="0" max="100" value="100" step="0.5" />
+          </label>
+          <p class="view__caption" data-reveal-caption></p>
+        </figure>
+      </div>
+
+      <!-- The numbers -->
+      <div class="readout" data-readout>
+        <div class="readout__cell readout__cell--hero">
+          <p class="label">Compression ratio</p>
+          <p class="readout__ratio num" data-ratio>—</p>
+          <p class="readout__sub" data-ratio-note>—</p>
+        </div>
+        <div class="readout__cell">
+          <p class="label">Input bits</p>
+          <p class="readout__big num" data-bitcount>—</p>
+        </div>
+        <div class="readout__cell">
+          <p class="label">Coded bits</p>
+          <p class="readout__big num" data-codedbits>—</p>
+        </div>
+        <div class="readout__cell">
+          <p class="label">Runs</p>
+          <p class="readout__big num" data-runcount>—</p>
+        </div>
+        <div class="readout__cell">
+          <p class="label">Mean run length</p>
+          <p class="readout__big num" data-meanrun>—</p>
+        </div>
+        <div class="readout__cell readout__cell--wide">
+          <p class="label">Container header · 16 bytes</p>
+          <p class="readout__hex num" data-header>—</p>
+          <p class="readout__sub" data-legend>—</p>
+        </div>
+      </div>
+
+      <!-- The chart that explains the ratio -->
+      <figure class="chart">
+        <figcaption class="label">
+          Mean run length against compression ratio, across every input on this page
+        </figcaption>
+        <div class="chart__frame" tabindex="0" role="region" aria-label="Chart, scrollable">
+          <canvas data-chart role="img" aria-label="Scatter plot of compression ratio against mean run length" aria-describedby="chart-alt"></canvas>
+        </div>
+        <p id="chart-alt" class="visually-hidden" data-chart-alt></p>
+        <p class="chart__note">
+          Each run costs 1 type bit, the Fibonacci code of (length + 1), and a 3-bit
+          <code>011</code> terminator — about log<sub>φ</sub>(L) + 4 bits for a run of length L. That
+          only beats L once L is around <strong>9</strong>, which is where the line crosses 1.0.
+        </p>
+      </figure>
+
+      <details class="runs">
+        <summary class="label">Run table — the codec's actual records</summary>
+        <div class="runs__scroll" tabindex="0" role="region" aria-label="Run table, scrollable">
+          <table data-runs-table>
+            <caption class="visually-hidden">
+              Every run in the encoded stream, with its type bit, Fibonacci codeword and bit offsets
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">out bit</th>
+                <th scope="col">value</th>
+                <th scope="col">length</th>
+                <th scope="col">Fibonacci code</th>
+                <th scope="col">coded start</th>
+                <th scope="col">coded len</th>
+              </tr>
+            </thead>
+            <tbody data-runs-body></tbody>
+          </table>
+        </div>
+        <p class="runs__note">
+          The <code>011</code> terminator is self-synchronising because a canonical Zeckendorf word
+          has no adjacent ones, so it can never contain <code>011</code> internally. Scanning forward
+          from a codeword's start, the first <code>011</code> is unambiguously the end of it.
+        </p>
+      </details>
+    </div>
+  </div>
+
+  <div class="notes">
+    <section class="note retract-note">
+      <p>
+        <strong>The finding.</strong> I expected a Hilbert curve to make run-length coding work on
+        images, because it keeps 2D neighbours close in the bitstream. Measured, it mostly does the
+        opposite. The curve is fractal, so it crosses a straight screen-space edge far more than
+        once: for a fixed four-region image the run count grew <strong>3.64× for every doubling of
+        side length</strong>, against 4× for the pixel count. Past an average run of about 9 bits the
+        terminator overhead eats the gain, and every generated image here is an expansion.
+      </p>
+    </section>
+
+    <section class="note verified-note">
+      <p>
+        <strong>So what does it compress?</strong> Bitstreams with long runs — which is what
+        <code>docs/COMPRESSION.md</code> actually reports. A run of 100 zeros encodes to 16 bits,
+        ratio 0.16, reproduced exactly here. The image path is where the interesting failure is; the
+        pattern path is where the codec earns its keep.
+      </p>
+    </section>
+
+    <section class="note claim-note">
+      <p>
+        <strong>And a second finding.</strong> The docs quote “10% ones → 0.44, excellent
+        compression”. That is a <em>density</em> presented as a compression result. At the same 10%
+        one-density, contiguous blocks give ratio 0.24 and evenly scattered ones give
+        <strong>1.52</strong> — an expansion. Clustering determines compressibility, not density.
+        Compare <code>clustered-sparse</code> with <code>scattered-ones</code> in the pattern list.
+      </p>
+    </section>
+  </div>
+</Demo>
+
+<script>
+  import { invoke, u64 } from '../../lib/fib';
+  import { fmtHex, need, needAll, setStatus, token, withAlpha } from '../../lib/ui';
+  import type { U64 } from '../../lib/fib';
+
+  interface RunRecord {
+    bit: number;
+    value: number;
+    length: number;
+    codeword: string;
+    startOutBit: number;
+    startCoded: number;
+    codedLength: number;
+  }
+
+  interface EncodeOut {
+    order: number;
+    size: number;
+    threshold: number;
+    preset: string;
+    bitCount: number;
+    ones: number;
+    longestRun: number;
+    meanRunLength: number;
+    bits: string;
+    codedBase64: string;
+    codedBits: number;
+    exactCodedBits: number;
+    originalLenInBits: number;
+    containerHeaderHex: string;
+    ratio: number;
+    sourcePixels: number;
+    runs: RunRecord[];
+    runNote: string;
+  }
+
+  interface PathOut {
+    order: number;
+    size: number;
+    stride: number;
+    pointCount: number;
+    pairs: number[];
+  }
+
+  /* ---- DOM ---- */
+  const status = need<HTMLElement>('[data-status]');
+  const body = need<HTMLElement>('[data-body]');
+  const fileInput = need<HTMLInputElement>('[data-file]');
+  const patternSel = need<HTMLSelectElement>('[data-pattern]');
+  const presetSel = need<HTMLSelectElement>('[data-preset]');
+  const lengthInput = need<HTMLInputElement>('[data-length]');
+  const orderInput = need<HTMLInputElement>('[data-order]');
+  const orderInputU = need<HTMLInputElement>('[data-order-u]');
+  const threshInput = need<HTMLInputElement>('[data-threshold]');
+  const threshInputU = need<HTMLInputElement>('[data-threshold-u]');
+  const revealPos = need<HTMLInputElement>('[data-reveal-pos]');
+  const presetNote = need<HTMLElement>('[data-preset-note]');
+  const revealCaption = need<HTMLElement>('[data-reveal-caption]');
+  const chartAlt = need<HTMLElement>('[data-chart-alt]');
+  const runsBody = need<HTMLTableSectionElement>('[data-runs-body]');
+
+  const out = {
+    ratio: need<HTMLElement>('[data-ratio]'),
+    ratioNote: need<HTMLElement>('[data-ratio-note]'),
+    bitCount: need<HTMLElement>('[data-bitcount]'),
+    codedBits: need<HTMLElement>('[data-codedbits]'),
+    runCount: need<HTMLElement>('[data-runcount]'),
+    meanRun: need<HTMLElement>('[data-meanrun]'),
+    header: need<HTMLElement>('[data-header]'),
+    legend: need<HTMLElement>('[data-legend]'),
+  };
+
+  const canvases = {
+    path: need<HTMLCanvasElement>('[data-path]'),
+    thresholded: need<HTMLCanvasElement>('[data-thresholded]'),
+    reveal: need<HTMLCanvasElement>('[data-reveal]'),
+    chart: need<HTMLCanvasElement>('[data-chart]'),
+  };
+
+  type Mode = 'pattern' | 'preset' | 'upload';
+  let mode: Mode = 'pattern';
+  let data: EncodeOut | null = null;
+  let path: PathOut | null = null;
+  let pathCache = new Map<number, PathOut>();
+  let chartPoints: Array<{ label: string; meanRun: number; ratio: number }> = [];
+  let uploaded: string | null = null;
+
+  /* ---- Preset metadata, mirrored from internal/wasmapi/presets.go.
+         The Go side is the source of truth for what these presets are; this is
+         only the label text, so the page can explain each result. ---- */
+  const PATTERNS = [
+    ['zeros', 'zeros — one long run'],
+    ['clustered-sparse', 'clustered-sparse — 10% ones, contiguous'],
+    ['blocks', 'blocks — geometrically growing runs'],
+    ['rows-bits', 'rows-bits — fifty 20-bit runs'],
+    ['scattered-ones', 'scattered-ones — 10% ones, spread evenly'],
+    ['alternating', 'alternating — the worst case'],
+  ] as const;
+
+  const PRESETS = [
+    ['photo', 'photo — flat posterised scene'],
+    ['rows', 'rows — horizontal stripes'],
+    ['rings', 'rings — concentric bands'],
+    ['gradient', 'gradient — a single clean edge'],
+    ['noise', 'noise — pseudo-random pixels'],
+    ['checkerboard', 'checkerboard — the repo’s original fixture'],
+  ] as const;
+
+  const NOTES: Record<string, string> = {
+    zeros:
+      'A single run of zeros: the case docs/COMPRESSION.md reports at ratio 0.16, reproduced exactly. One run means the whole cost is a type bit, one Fibonacci code and the terminator.',
+    'clustered-sparse':
+      '10% ones grouped into contiguous blocks — this is what actually produces the compression the docs attribute to “10% ones”.',
+    blocks:
+      'Runs of geometrically growing length. The overhead is paid once per run, so it amortises as runs get longer.',
+    'rows-bits':
+      'Fifty 20-bit runs, alternating value. Roughly what a two-tone image would look like if the curve visited it in scanline order.',
+    'scattered-ones':
+      'The same 10% density as clustered-sparse, spread evenly — and it expands. Density alone does not determine compressibility.',
+    alternating:
+      'Every run is one bit, so the codec spends six bits to store one. This is the worst case and the reason the ratio exceeds 1.',
+    photo:
+      'Flat, hard-edged scene. Smoothness is the enemy here: 1-bit thresholding cuts through a gradient and turns it into speckle, so every run collapses to length 1.',
+    rows: 'Horizontal stripes. Every run spans a row, which is close to the best case for run-length coding.',
+    rings: 'Concentric bands. Curved boundaries give medium-length runs.',
+    gradient: 'One left-to-right ramp. The threshold cuts a single clean edge, leaving two very long runs — the best case for a 2D image.',
+    noise: 'Deterministic pseudo-random pixels. Effectively the same as alternating once run-length coding sees it.',
+    checkerboard:
+      'The repository’s original fixture, kept as a counter-example. Alternating pixels mean every run is one bit, so the codec expands by 3.5x rather than compressing.',
+  };
+
+  for (const [v, label] of PATTERNS) {
+    patternSel.add(new Option(label, v));
+  }
+  for (const [v, label] of PRESETS) {
+    presetSel.add(new Option(label, v));
+  }
+  presetSel.value = 'photo';
+
+  /* ---- Boot ---- */
+  async function boot(): Promise<void> {
+    try {
+      await invoke('fsvm.meta', {});
+      body.hidden = false;
+      status.hidden = true;
+      await refresh();
+      // Preload the curve at the current order so the path panel is never blank.
+      await ensurePath(Number(orderInput.value) || 5);
+      drawAll();
+    } catch (err) {
+      setStatus(status, (err as Error).message, 'error');
+    }
+  }
+
+  /* ---- Data ---- */
+  async function refresh(): Promise<void> {
+    try {
+      const args: Record<string, unknown> =
+        mode === 'pattern'
+          ? { pattern: patternSel.value, length: Number(lengthInput.value) || 1024 }
+          : mode === 'preset'
+            ? {
+                preset: presetSel.value,
+                order: Number(orderInput.value) || 5,
+                threshold: Number(threshInput.value) ?? 128,
+              }
+            : {
+                png: uploaded ?? '',
+                order: Number(orderInputU.value) || 6,
+                threshold: Number(threshInputU.value) ?? 128,
+                preset: 'upload',
+              };
+
+      if (mode === 'upload' && !uploaded) {
+        setStatus(status, 'Choose a PNG first, or switch to another input mode.', 'info');
+        return;
+      }
+
+      const { data: d } = await invoke<EncodeOut>('hilbert.encode', args);
+      data = d;
+
+      // Keep the chart complete: sample every pattern and every preset once.
+      await extendChart();
+
+      presetNote.textContent = NOTES[d.preset] ?? '';
+      revealPos.max = '100';
+
+      renderRunTable();
+      renderReadout();
+      drawAll();
+    } catch (err) {
+      setStatus(status, (err as Error).message, 'error');
+    }
+  }
+
+  /** Run every input once and record meanRun against ratio, for the chart. */
+  async function extendChart(): Promise<void> {
+    const seen = new Set(chartPoints.map((p) => p.label));
+    const jobs: Array<{ label: string; args: Record<string, unknown> }> = [];
+
+    for (const [name] of PATTERNS) {
+      const key = name;
+      if (!seen.has(key)) {
+        jobs.push({ label: key, args: { pattern: key, length: 1024 } });
+      }
+    }
+    if (path === null) {
+      for (const [name] of PRESETS) {
+        const key = `img:${name}`;
+        if (!seen.has(key)) {
+          jobs.push({
+            label: key,
+            args: { preset: name, order: 5, threshold: 128 },
+          });
+        }
+      }
+    }
+
+    for (const job of jobs) {
+      try {
+        const { data: d } = await invoke<EncodeOut>('hilbert.encode', job.args);
+        chartPoints.push({ label: job.label, meanRun: d.meanRunLength, ratio: d.ratio });
+      } catch {
+        // A single failed sample is not worth failing the whole chart.
+      }
+    }
+  }
+
+  async function ensurePath(order: number): Promise<PathOut> {
+    const cached = pathCache.get(order);
+    if (cached) {
+      path = cached;
+      return cached;
+    }
+    const { data: p } = await invoke<PathOut>('hilbert.path', { order, stride: 1 });
+    pathCache.set(order, p);
+    path = p;
+    return p;
+  }
+
+  /* ---- Readout ---- */
+  function renderReadout(): void {
+    if (!data) return;
+    const r = data.ratio;
+    out.ratio.textContent = r.toFixed(3);
+    out.ratio.dataset.kind = r < 1 ? 'compress' : 'expand';
+    out.ratioNote.textContent =
+      r < 1
+        ? `compresses — ${data.bitCount} bits stored in ${data.codedBits}`
+        : `expands — ${data.codedBits} bits to store ${data.bitCount}`;
+    out.bitCount.textContent = data.bitCount.toLocaleString('en-US');
+    out.codedBits.textContent = data.codedBits.toLocaleString('en-US');
+    out.runCount.textContent = data.runs.length.toLocaleString('en-US');
+    out.meanRun.textContent = String(data.meanRunLength);
+    out.header.textContent = chunkHex(data.containerHeaderHex, 4);
+    out.legend.textContent = data.sourcePixels
+      ? `width ${data.size} · height ${data.size} · length ${data.originalLenInBits} bits`
+      : `no pixel dimensions · length ${data.originalLenInBits} bits`;
+  }
+
+  function chunkHex(hex: string, group: number): string {
+    const outp: string[] = [];
+    for (let i = 0; i < hex.length; i += group) {
+      outp.push(hex.slice(i, i + group).replace(/(..)(?=.)/g, '$1 '));
+    }
+    return outp.join('  ');
+  }
+
+  function renderRunTable(): void {
+    if (!data) return;
+    // A long run table is a wall; cap it and say so rather than pretending the
+    // first 200 are all of them.
+    const cap = 200;
+    const rows = data.runs.slice(0, cap);
+    runsBody.replaceChildren(
+      ...rows.map((r) => {
+        const tr = document.createElement('tr');
+        const cells: Array<[string, string]> = [
+          [String(r.startOutBit), 'num'],
+          [r.value === 1 ? '1' : '0', 'num'],
+          [String(r.length), 'num'],
+          [r.codeword, 'num'],
+          [String(r.startCoded), 'num'],
+          [String(r.codedLength), 'num'],
+        ];
+        for (const [text, cls] of cells) {
+          const td = document.createElement('td');
+          td.textContent = text;
+          td.className = cls;
+          tr.append(td);
+        }
+        return tr;
+      }),
+    );
+    if (data.runs.length > cap) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 6;
+      td.className = 'runs__more';
+      td.textContent = `… and ${(data.runs.length - cap).toLocaleString('en-US')} more runs`;
+      tr.append(td);
+      runsBody.append(tr);
+    }
+  }
+
+  /* ---- Drawing ---- */
+  function prep(canvas: HTMLCanvasElement, size: number): CanvasRenderingContext2D {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    const cssSize = Math.max(size, 120);
+    canvas.width = Math.round(cssSize * dpr);
+    canvas.height = Math.round(cssSize * dpr);
+    canvas.style.width = `${cssSize}px`;
+    canvas.style.height = `${cssSize}px`;
+    const g = canvas.getContext('2d');
+    if (!g) throw new Error('canvas 2d context unavailable');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return g;
+  }
+
+  /** The bitstream as a square image, addressed through the curve. */
+  function drawBitImage(canvas: HTMLCanvasElement, upTo: number): void {
+    if (!data) return;
+    const g = prep(canvas, canvasSize());
+    const size = data.sourcePixels ? data.size : Math.min(256, data.bitCount);
+    const side = Math.max(Math.round(Math.sqrt(data.bitCount)), 1);
+    g.clearRect(0, 0, side, side);
+
+    const on = token('--brass', '#c9a227');
+    const off = token('--surface-sunk', '#12151a');
+    const rule = token('--rule', '#2e3540');
+    const revealed = token('--verify', '#4aa8a0');
+
+    for (let d = 0; d < data.bitCount && d < upTo; d++) {
+      // Without an image, lay the bits out as a plain square so the pattern
+      // still shows structure; with an image, follow the curve.
+      let x: number;
+      let y: number;
+      if (data.sourcePixels && path && path.size === data.size) {
+        [x, y] = hilbertTo(path.pairs, path.pointCount, d);
+      } else {
+        x = d % side;
+        y = Math.floor(d / side);
+      }
+      g.fillStyle = data.bits[d] === '1' ? on : off;
+      g.fillRect(x, y, 1, 1);
+    }
+
+    // A hairline grid so single-bit detail is visible at large orders.
+    if (data.size <= 32) {
+      g.strokeStyle = rule;
+      g.lineWidth = 0.25;
+      g.beginPath();
+      for (let i = 0; i <= data.size; i++) {
+        g.moveTo(i + 0.5, 0);
+        g.lineTo(i + 0.5, data.size);
+        g.moveTo(0, i + 0.5);
+        g.lineTo(data.size, i + 0.5);
+      }
+      g.stroke();
+    }
+    void revealed;
+  }
+
+  /**
+   * The path panel needs every curve point, which for order 7 is 16,384 pairs.
+   * They are already in `pairs`; this is a linear scan, kept simple because it
+   * runs once per draw at most 16k steps.
+   */
+  function hilbertTo(pairs: number[], count: number, d: number): [number, number] {
+    if (d >= count) return [0, 0];
+    return [pairs[d * 2], pairs[d * 2 + 1]];
+  }
+
+  function canvasSize(): number {
+    return Math.min(320, Math.max(160, (canvases.path.parentElement?.clientWidth ?? 280) - 24));
+  }
+
+  function drawPathPanel(): void {
+    const canvas = canvases.path;
+    const g = prep(canvas, canvasSize());
+    const size = canvasSize();
+    g.clearRect(0, 0, size, size);
+
+    if (!data || !data.sourcePixels || !path) {
+      // Patterns have no geometry; say so rather than drawing a stale curve.
+      g.fillStyle = token('--ink-mute', '#7d838f');
+      g.font = '12px system-ui, sans-serif';
+      g.textAlign = 'center';
+      g.fillText('bit patterns have no image geometry', size / 2, size / 2);
+      g.textAlign = 'start';
+      return;
+    }
+
+    // Faint thresholded image underneath so the path has context.
+    for (let d = 0; d < data.bitCount && d < path.pointCount; d++) {
+      const [x, y] = hilbertTo(path.pairs, path.pointCount, d);
+      g.fillStyle = data.bits[d] === '1'
+        ? withAlpha(token('--brass', '#c9a227'), 0.28)
+        : withAlpha(token('--surface-sunk', '#12151a'), 0.6);
+      g.fillRect(x, y, 1, 1);
+    }
+
+    // The curve itself. Sub-sampled so 16k segments stay legible.
+    g.strokeStyle = token('--verify', '#4aa8a0');
+    g.lineWidth = Math.max(size / data.size / 2.2, 0.4);
+    g.globalAlpha = 0.85;
+    g.beginPath();
+    for (let d = 0; d < path.pointCount; d++) {
+      const [x, y] = hilbertTo(path.pairs, path.pointCount, d);
+      const px = x + 0.5;
+      const py = y + 0.5;
+      if (d === 0) g.moveTo(px, py);
+      else g.lineTo(px, py);
+    }
+    g.stroke();
+    g.globalAlpha = 1;
+  }
+
+  function drawReveal(): void {
+    const canvas = canvases.reveal;
+    if (!data) return;
+    const pct = Number(revealPos.value) / 100;
+
+    // The reveal is driven by how much of the *compressed file* has been read.
+    // StartCoded is exact per run, so this is a real mapping, not an animation
+    // that pretends to be one.
+    const consumedCoded = Math.round(data.codedBits * pct);
+    let outBits = 0;
+    for (const r of data.runs) {
+      if (r.startCoded + r.codedLength <= consumedCoded) {
+        outBits = r.startOutBit + r.length;
+      } else if (r.startCoded < consumedCoded) {
+        // Partial: charge a proportional share of this run.
+        const frac = (consumedCoded - r.startCoded) / r.codedLength;
+        outBits = r.startOutBit + Math.floor(r.length * frac);
+        break;
+      } else {
+        break;
+      }
+    }
+
+    drawBitImage(canvas, outBits);
+
+    const pctOfOut = data.bitCount ? (outBits / data.bitCount) * 100 : 0;
+    revealCaption.textContent =
+      `${pct.toFixed(0)}% of the compressed file — ${consumedCoded.toLocaleString('en-US')} of ` +
+      `${data.codedBits.toLocaleString('en-US')} coded bits — yields ${outBits.toLocaleString('en-US')} ` +
+      `of ${data.bitCount.toLocaleString('en-US')} original bits (${pctOfOut.toFixed(0)}%). ` +
+      `The mapping is exact, not interpolated: each run records where it starts in the file.`;
+  }
+
+  function drawChart(): void {
+    const canvas = canvases.chart;
+    const host = canvas.parentElement;
+    const w = Math.max((host?.clientWidth ?? 600), 280);
+    const h = 260;
+    const g = prep(canvas, w);
+    canvas.style.height = `${h}px`;
+    g.clearRect(0, 0, w, h);
+
+    const pts = chartPoints.filter((p) => p.meanRun > 0);
+    const pad = { l: 46, r: 16, t: 14, b: 34 };
+    const plotW = w - pad.l - pad.r;
+    const plotH = h - pad.t - pad.b;
+
+    if (pts.length < 2) {
+      g.fillStyle = token('--ink-mute', '#7d838f');
+      g.font = '12px system-ui, sans-serif';
+      g.fillText('sampling…', pad.l, pad.t + 20);
+      return;
+    }
+
+    // Log x, linear y. Mean run spans 1 to 1024, so a linear axis would pile
+    // every interesting point into the leftmost 2% of the plot.
+    const xs = pts.map((p) => Math.log10(Math.max(p.meanRun, 1)));
+    const x0 = 0;
+    const x1 = Math.log10(1200);
+    const yMax = Math.max(...pts.map((p) => p.ratio), 1) * 1.1;
+
+    const sx = (v: number) => pad.l + ((Math.log10(Math.max(v, 1)) - x0) / (x1 - x0)) * plotW;
+    const sy = (v: number) => pad.t + plotH - (v / yMax) * plotH;
+
+    // Grid and axes.
+    g.strokeStyle = token('--rule', '#2e3540');
+    g.fillStyle = token('--ink-mute', '#7d838f');
+    g.font = '10px ui-monospace, monospace';
+    g.lineWidth = 1;
+
+    for (const mean of [1, 3, 10, 30, 100, 300, 1000]) {
+      const x = sx(mean);
+      if (x < pad.l || x > w - pad.r) continue;
+      g.beginPath();
+      g.moveTo(x, pad.t);
+      g.lineTo(x, pad.t + plotH);
+      g.stroke();
+      g.textAlign = 'center';
+      g.fillText(String(mean), x, h - pad.b + 14);
+    }
+    for (let v = 0; v <= yMax; v += yMax > 4 ? 2 : 1) {
+      const y = sy(v);
+      g.beginPath();
+      g.moveTo(pad.l, y);
+      g.lineTo(w - pad.r, y);
+      g.stroke();
+      g.textAlign = 'right';
+      g.fillText(v.toFixed(0), pad.l - 6, y + 3);
+    }
+
+    g.textAlign = 'left';
+    g.fillText('mean run length (bits)', pad.l, h - 4);
+    g.save();
+    g.translate(11, pad.t + plotH / 2);
+    g.rotate(-Math.PI / 2);
+    g.textAlign = 'center';
+    g.fillText('ratio', 0, 0);
+    g.restore();
+
+    // The break-even line at ratio 1, drawn in brass and labelled, because it
+    // is the one number the whole chart is about.
+    const y1 = sy(1);
+    g.strokeStyle = token('--brass', '#c9a227');
+    g.lineWidth = 2;
+    g.setLineDash([6, 4]);
+    g.beginPath();
+    g.moveTo(pad.l, y1);
+    g.lineTo(w - pad.r, y1);
+    g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = token('--brass', '#c9a227');
+    g.textAlign = 'right';
+    g.fillText('break-even', w - pad.r - 4, y1 - 5);
+
+    // Points, shaped as well as coloured: filled for compressing, hollow for
+    // expanding, so the distinction survives without colour.
+    for (const p of pts) {
+      const x = sx(p.meanRun);
+      const y = sy(p.ratio);
+      g.beginPath();
+      g.arc(x, y, 4, 0, Math.PI * 2);
+      if (p.ratio < 1) {
+        g.fillStyle = token('--verify', '#4aa8a0');
+        g.fill();
+      } else {
+        g.strokeStyle = token('--retract', '#b8544f');
+        g.lineWidth = 2;
+        g.stroke();
+      }
+    }
+
+    // Direct labels on the extremes, so the chart is readable without a legend.
+    g.font = '10px ui-monospace, monospace';
+    const label = (p: (typeof pts)[0], dx: number, dy: number) => {
+      g.fillStyle = token('--ink-dim', '#a8aeb9');
+      g.textAlign = 'left';
+      g.fillText(p.label, sx(p.meanRun) + dx, sy(p.ratio) + dy);
+    };
+    const best = pts.reduce((a, b) => (b.ratio < a.ratio ? b : a));
+    const worst = pts.reduce((a, b) => (b.ratio > a.ratio ? b : a));
+    if (best.label !== worst.label) {
+      label(best, 8, -6);
+      label(worst, 8, 14);
+    }
+
+    chartAlt.textContent =
+      `Scatter plot of compression ratio against mean run length for ${pts.length} inputs. ` +
+      `The lowest ratio is ${best.ratio.toFixed(3)} at mean run ${best.meanRun} (${best.label}); ` +
+      `the highest is ${worst.ratio.toFixed(3)} at mean run ${worst.meanRun} (${worst.label}). ` +
+      `Every input with a mean run under about 9 bits expands.`;
+  }
+
+  function drawAll(): void {
+    drawPathPanel();
+    drawBitImage(canvases.thresholded, data ? data.bitCount : 0);
+    drawReveal();
+    drawChart();
+  }
+
+  /* ---- Events ---- */
+  for (const btn of needAll<HTMLButtonElement>('[data-mode]')) {
+    btn.addEventListener('click', () => {
+      mode = btn.dataset.mode as Mode;
+      for (const b of needAll('[data-mode]')) b.setAttribute('aria-pressed', String(b === btn));
+      for (const g of needAll<HTMLElement>('[data-group]')) {
+        g.hidden = g.dataset.group !== mode;
+      }
+      void refresh();
+    });
+  }
+
+  for (const sel of [patternSel, presetSel]) sel.addEventListener('change', () => void refresh());
+  for (const inp of [lengthInput, orderInput, threshInput, orderInputU, threshInputU]) {
+    inp.addEventListener('change', () => void refresh());
+  }
+
+  orderInput.addEventListener('change', async () => {
+    await ensurePath(Number(orderInput.value) || 5);
+    drawAll();
+  });
+
+  revealPos.addEventListener('input', () => drawReveal());
+
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    uploaded = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.slice(result.indexOf(',') + 1));
+      };
+      reader.onerror = () => reject(new Error('could not read that file'));
+      reader.readAsDataURL(file);
+    });
+    void refresh();
+  });
+
+  let raf = 0;
+  window.addEventListener('resize', () => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(drawAll);
+  });
+
+  void boot();
+</script>
+
+<style>
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .stage {
+    padding: 1.5rem 1.6rem 1.6rem;
+  }
+  .stage__loading {
+    color: var(--ink-dim);
+    padding: 2rem 0;
+    text-align: center;
+  }
+  .stage__loading[data-kind='error'] {
+    color: var(--retract-lit);
+    text-align: left;
+    white-space: pre-wrap;
+  }
+
+  .controls {
+    display: grid;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .controls__group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+  }
+  .seg__group {
+    display: flex;
+    gap: 0.3rem;
+  }
+  .seg__group button {
+    padding: 0.45rem 0.85rem;
+    font-size: 0.85rem;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .field--grow {
+    flex: 1 1 20rem;
+  }
+  .field--narrow {
+    flex: 0 0 9rem;
+  }
+
+  .preset-note {
+    font-size: 0.85rem;
+    color: var(--ink-dim);
+    line-height: 1.55;
+    min-height: 2.6em;
+    padding-bottom: 0.9rem;
+    border-bottom: var(--rule-w) solid var(--rule);
+  }
+
+  /* ---- Views ---- */
+  .views {
+    display: grid;
+    gap: 1.5rem;
+    margin: 1.5rem 0;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+  }
+  .view {
+    margin: 0;
+  }
+  .view figcaption {
+    margin-bottom: 0.55rem;
+  }
+  .view__frame {
+    background: var(--surface-sunk);
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--sunk-sm);
+    padding: 0.75rem;
+    display: grid;
+    place-items: center;
+    min-height: 12rem;
+  }
+  .view__frame canvas {
+    border-radius: var(--radius-xs);
+    image-rendering: pixelated;
+  }
+  .view__caption {
+    font-size: 0.78rem;
+    color: var(--ink-mute);
+    line-height: 1.5;
+    margin-top: 0.6rem;
+  }
+  .reveal-ctl {
+    display: block;
+    margin-top: 0.75rem;
+  }
+  .reveal-ctl input {
+    margin-top: 0.2rem;
+  }
+
+  /* ---- Readout ---- */
+  .readout {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+  }
+  .readout__cell {
+    background: var(--surface-sunk);
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--sunk-sm);
+    padding: 0.8rem 0.9rem;
+  }
+  .readout__cell--wide {
+    grid-column: span 2;
+  }
+  @media (max-width: 40rem) {
+    .readout__cell--wide {
+      grid-column: span 1;
+    }
+  }
+  .readout__cell--hero {
+    border-color: var(--brass-dim);
+  }
+
+  .readout__ratio {
+    font-size: 2.1rem;
+    font-weight: 700;
+    line-height: 1.1;
+    margin-top: 0.2rem;
+  }
+  .readout__ratio[data-kind='compress'] {
+    color: var(--verify);
+  }
+  .readout__ratio[data-kind='expand'] {
+    color: var(--retract);
+  }
+  .readout__big {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-top: 0.25rem;
+  }
+  .readout__sub {
+    font-size: 0.72rem;
+    color: var(--ink-mute);
+    margin-top: 0.3rem;
+    line-height: 1.5;
+  }
+  .readout__hex {
+    font-size: 0.72rem;
+    line-height: 1.7;
+    margin-top: 0.4rem;
+    word-break: break-all;
+  }
+
+  /* ---- Chart ---- */
+  .chart {
+    margin: 2rem 0 0;
+  }
+  .chart figcaption {
+    margin-bottom: 0.6rem;
+  }
+  .chart__frame {
+    background: var(--surface-sunk);
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--sunk-sm);
+    padding: 0.75rem;
+  }
+  .chart__note {
+    font-size: 0.82rem;
+    color: var(--ink-dim);
+    line-height: 1.6;
+    margin-top: 0.7rem;
+  }
+
+  /* ---- Run table ---- */
+  .runs {
+    margin-top: 1.5rem;
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+    padding: 0.9rem 1rem;
+  }
+  .runs summary {
+    cursor: pointer;
+  }
+  .runs__scroll {
+    max-height: 22rem;
+    overflow: auto;
+    margin-top: 0.75rem;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.76rem;
+  }
+  th,
+  td {
+    text-align: right;
+    padding: 0.3rem 0.6rem;
+    border-bottom: var(--rule-w) solid var(--rule);
+    white-space: nowrap;
+  }
+  th {
+    color: var(--ink-mute);
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+  }
+  .runs__more {
+    text-align: center;
+    color: var(--ink-mute);
+  }
+  .runs__note {
+    font-size: 0.78rem;
+    color: var(--ink-mute);
+    line-height: 1.55;
+    margin-top: 0.8rem;
+  }
+
+  /* ---- Notes ---- */
+  .notes {
+    display: grid;
+    gap: 1rem;
+    margin-top: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+    align-items: start;
+  }
+  .notes .note {
+    font-size: 0.88rem;
+    line-height: 1.6;
+    color: var(--ink-dim);
+  }
+</style>

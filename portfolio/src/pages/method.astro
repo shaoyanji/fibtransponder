@@ -1,0 +1,484 @@
+---
+import Base from '../layouts/Base.astro';
+import { demos } from '../data/demos';
+
+interface Bench {
+  name: string;
+  cost: string;
+  allocs: string;
+  note?: string;
+}
+
+const benches: Bench[] = [
+  { name: 'fsvm.BenchmarkStep', cost: '~30 ns/bit', allocs: '0', note: 'Zobrist sketch folded into the core step' },
+  { name: 'fsvm.BenchmarkStepV2', cost: '~35 ns/bit', allocs: '0', note: 'Avalanche mixer, richer folding' },
+  { name: 'fsvm.BenchmarkStepWord64V2', cost: '~14 ns/bit', allocs: '0', note: '~887 ns per 64-bit word, the bulk path' },
+  { name: 'fsvm.BenchmarkStepWithExtractor', cost: '~97 ns/bit', allocs: '0', note: 'Sparse: only charged when an event fires' },
+  { name: 'fsvm.BenchmarkExtractorExtract', cost: '~820 ns', allocs: '0', note: '256-bit descriptor from a 64-bit window' },
+  { name: 'fsvm.BenchmarkDescriptorDistance', cost: '~15 ns', allocs: '0', note: 'L1 over 32 bytes' },
+  { name: 'deltaqueue.BenchmarkClassify', cost: '~55 ns', allocs: '0', note: '52-byte derived delta, heap-free' },
+  { name: 'calibration.BenchmarkStepWord64Adaptive', cost: '~2176 ns/word', allocs: '1', note: '7-transponder array; calibrates every 256 bits' },
+  { name: 'signal/wht.BenchmarkFWHT1024', cost: '~23.6 µs', allocs: '1', note: 'Walsh-Hadamard, 1024 points' },
+  { name: 'signal/fft.BenchmarkFFT1024', cost: '~60.1 µs', allocs: '0', note: 'Radix-2 Cooley-Tukey, after buffer reuse' },
+  { name: 'bitrope.BenchmarkAppendBit', cost: '~14.8 ns/bit', allocs: '0', note: 'Append-only packed bit rope' },
+];
+---
+
+<Base
+  title="Method — fibtransponder"
+  description="The state machine, its complexity bounds, the benchmarks with their host named, and how to reproduce every number on this site."
+  kicker="Specification and measurement"
+>
+  <header class="page-head">
+    <h1>Method, and how to check it</h1>
+    <p class="lede measure">
+      Every figure on this site comes from the same repository the demos run. This page states the
+      state machine precisely, names the hardware behind each benchmark, and gives the commands to
+      reproduce all of it.
+    </p>
+  </header>
+
+  <!-- ── The state machine ─────────────────────────────────────────────── -->
+  <div class="chevron"><span>The core</span></div>
+
+  <section class="spec">
+    <div class="spec__col">
+      <h2>State</h2>
+      <p class="prose">
+        A single <code>State</code> value, <strong class="num">96 bytes</strong> on 64-bit and
+        pinned there by <code>TestStateSize</code>. It does not grow with stream length.
+      </p>
+      <dl class="fields">
+        <div><dt><code>R</code></dt><dd>dilation exponent</dd></div>
+        <div><dt><code>W</code></dt><dd>6-bit window over recent bits</dd></div>
+        <div><dt><code>LastBit</code></dt><dd>previous observed bit</dd></div>
+        <div><dt><code>ZeroRun</code></dt><dd>current consecutive-zero run</dd></div>
+        <div><dt><code>Sketch</code></dt><dd>64-bit Zobrist fingerprint</dd></div>
+        <div><dt><code>SketchDelta</code></dt><dd>bits flipped, v2 only</dd></div>
+        <div><dt><code>BitsProcessed</code></dt><dd>monotonic bit counter</dd></div>
+        <div><dt><code>Seeds</code></dt><dd>per-instance Zobrist pair</dd></div>
+      </dl>
+    </div>
+
+    <div class="spec__col">
+      <h2>Step</h2>
+      <p class="prose">On each bit <code>b</code>, in this order and no other work:</p>
+      <ol class="steps">
+        <li>
+          If <code>b = 0</code>, increment <code>ZeroRun</code>. If it crosses a power of two at or
+          above 8, emit <span class="tag tag-verified">MARKER</span>.
+        </li>
+        <li>
+          If <code>LastBit = 1</code> and <code>b = 1</code>, increment <code>R</code> and emit
+          <span class="tag tag-retract">DILATE</span>.
+        </li>
+        <li>Set <code>LastBit = b</code>, then <code>W = ((W &lt;&lt; 1) | b) &amp; 0x3F</code>.</li>
+        <li>XOR the sketch with <code>SketchTerm(Seeds, b, W)</code>.</li>
+      </ol>
+      <p class="prose">
+        No allocation, no branching on anything the caller controls, no I/O. Dilation rescales
+        semantic indices <em>retrospectively</em> — the indices become
+        <code>i &lt;&lt; R</code> — but no zeros are ever materialised, so the storage cost of a
+        dilation event is one increment.
+      </p>
+    </div>
+  </section>
+
+  <!-- ── Complexity ────────────────────────────────────────────────────── -->
+  <section class="bounds">
+    <article class="panel">
+      <p class="label">Time</p>
+      <h3>O(1) per input bit</h3>
+      <p>
+        Every operation above is a fixed number of integer operations. A word-level fast path
+        consumes 64 bits per call, which is where the ~14 ns/bit figure comes from.
+      </p>
+    </article>
+    <article class="panel">
+      <p class="label">Memory</p>
+      <h3>Fixed state, linear history</h3>
+      <p>
+        The state is 96 bytes whatever the stream length. The optional bit rope grows linearly in
+        observed bits with immutable block allocation and no rewrite on dilation — which matters,
+        because dilation would otherwise force a rewrite of everything downstream.
+      </p>
+    </article>
+    <article class="panel">
+      <p class="label">Safety</p>
+      <h3>Bounded, not best-effort</h3>
+      <p>
+        Ingest cannot be made slow by its input. Candidate segmentation points are sparse and
+        deterministic — zero-runs hitting powers of two — so a hostile stream cannot induce
+        unbounded work. Rendering is budgeted and degrades to summaries.
+      </p>
+    </article>
+  </section>
+
+  <!-- ── Benchmarks ────────────────────────────────────────────────────── -->
+  <div class="chevron"><span>Benchmarks</span></div>
+
+  <section id="benchmarks">
+    <p class="prose measure">
+      Host: <strong>AMD EPYC 7763 64-Core</strong>, Go 1.25, <code>CGO_ENABLED=0</code>. Every figure
+      was re-measured after the sketch fold fix; earlier revisions cited an unnamed Celeron N3010
+      and Pentium N4200 without attributing individual results, and those numbers were
+      <strong>deleted rather than kept</strong>.
+    </p>
+
+    <div class="bench__scroll" tabindex="0" role="region" aria-label="Benchmark table, scrollable">
+      <table class="bench">
+        <caption class="visually-hidden">Benchmark results with the host named</caption>
+        <thead>
+          <tr>
+            <th scope="col">Benchmark</th>
+            <th scope="col">Cost</th>
+            <th scope="col">Allocs</th>
+            <th scope="col">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            benches.map((b) => (
+              <tr>
+                <th scope="row" class="num">{b.name}</th>
+                <td class="num bench__cost">{b.cost}</td>
+                <td class="num">{b.allocs}</td>
+                <td class="bench__note">{b.note}</td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <p class="prose measure">
+      On the classifier's cost breakdown, which is the most useful of these because it shows where
+      the time actually goes: auxiliary buckets ~33 ns (60%), the steps-since loop ~9.5 ns (17%),
+      struct copy and control flow ~11 ns (21%), and the sketch read <strong>0.65 ns</strong>
+      (1%). Handling the sketch is no longer a cost factor — the win from folding it into the core
+      instead of a sidecar was real and is now measurable.
+    </p>
+  </section>
+
+  <!-- ── Reproduce ─────────────────────────────────────────────────────── -->
+  <div class="chevron"><span>Reproduce</span></div>
+
+  <section class="repro">
+    <div class="repro__col">
+      <h2>From a clean checkout</h2>
+      <pre><code>git clone https://github.com/shaoyanji/fibtransponder
+cd fibtransponder
+
+# The canonical check: vet, tests, conformance
+make ci
+
+# Benchmarks, with memory statistics
+go test -bench . -benchmem ./internal/fsvm
+go test -bench=BenchmarkClassify -benchmem ./internal/deltaqueue
+go test -bench . -benchmem ./internal/signal/wht ./internal/signal/fft</code></pre>
+      <p class="prose">
+        Those are the invocations recorded in <code>docs/BENCHMARKS.md</code>. The goldens that
+        matter for correctness are the tests, not the benchmarks: state size, the nested-width
+        invariant, the marker preconditions, and the sketch entropy floor.
+      </p>
+    </div>
+
+    <div class="repro__col">
+      <h2>Reproducing this site</h2>
+      <pre><code># Build the WebAssembly module the demos call
+make wasm
+#   → portfolio/public/wasm/fibtransponder.wasm
+#     (+ .br, .gz, and a vendored wasm_exec.js)
+
+# Build the site
+cd portfolio
+npm install
+npm run build      # → portfolio/dist</code></pre>
+      <p class="prose">
+        The shim lives in <code>internal/wasmapi</code> and is plain Go with no
+        <code>syscall/js</code>, so it is unit tested natively as part of <code>make ci</code>. The
+        js-only wrapper is <code>cmd/fibwasm</code>, behind a build tag with a native stub so
+        ordinary builds keep working.
+      </p>
+    </div>
+  </section>
+
+  <!-- ── Known limits ──────────────────────────────────────────────────── -->
+  <div class="chevron"><span>Known limits</span></div>
+
+  <section class="limits">
+    <ul>
+      <li>
+        <strong>No collision guarantee on the sketch.</strong> It is a parity function over a
+        128-symbol alphabet, so ~1.5% of random streams of length 1–200 collide, and an all-zero
+        stream yields only 2 distinct values at any length. See the
+        <a href="/demo/sketch-entropy">sketch entropy demo</a>.
+      </li>
+      <li>
+        <strong>Prose-versus-code sensitivity is partly an encoding artefact.</strong> The width-2
+        and width-3 rates are driven by which ASCII bytes contain long one-runs, and Go source is
+        dense in exactly those characters. See <a href="/demo/width-axis">the width demo</a>.
+      </li>
+      <li>
+        <strong>The threshold axis is untested, not proven independent.</strong> No marker fires on
+        any of the repository's corpora at any of the 9 width/threshold configurations, so nothing
+        can be concluded from them.
+      </li>
+      <li>
+        <strong>The image codec mostly expands its input.</strong> A Hilbert curve is fractal, so
+        it crosses a screen-space edge O(n^1.585) to O(n²) times and run-length coding cannot keep
+        up. This was measured, not assumed. See <a href="/demo/hilbert-codec">the codec demo</a>.
+      </li>
+      <li>
+        <strong>Non-ASCII input is handled inconsistently between demos.</strong> The FSVM demos
+        use true UTF-8 bytes; <code>dilationtree.TextToBits</code> emits eight bits per rune and
+        truncates each code point to its low byte. The demos warn rather than disagreeing silently.
+      </li>
+      <li>
+        <strong>No model was trained on any of this.</strong> There is no accuracy claim, no
+        benchmark against a real language task, and no comparison with BPE.
+      </li>
+    </ul>
+  </section>
+
+  <section class="cta panel framed measure">
+    <h2>The demos</h2>
+    <p>
+      All six call the same Go this page describes.
+    </p>
+    <ul class="cta__list">
+      {
+        demos.map((d) => (
+          <li>
+            <a href={`/demo/${d.slug}`}>{d.title}</a>
+            <span>{d.blurb}</span>
+          </li>
+        ))
+      }
+    </ul>
+  </section>
+</Base>
+
+<style>
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .page-head {
+    margin-bottom: 1.5rem;
+  }
+  h1 {
+    margin-bottom: 1.1rem;
+  }
+  .lede {
+    font-size: 1.1rem;
+    color: var(--ink-dim);
+  }
+
+  h2 {
+    font-size: 1.25rem;
+    margin-bottom: 0.75rem;
+  }
+  h3 {
+    font-size: 1.05rem;
+  }
+
+  .prose {
+    color: var(--ink-dim);
+    font-size: 0.93rem;
+    line-height: 1.65;
+    max-width: var(--measure);
+    margin-bottom: 1.1rem;
+  }
+  .caveat-inline {
+    font-size: 0.78rem;
+    color: var(--ink-mute);
+  }
+
+  /* ---- Spec ---- */
+  .spec {
+    display: grid;
+    gap: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+    margin-bottom: 2.5rem;
+  }
+
+  .fields {
+    margin: 0;
+    display: grid;
+    gap: 0.4rem;
+  }
+  .fields > div {
+    display: grid;
+    grid-template-columns: 9rem minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: baseline;
+    padding-bottom: 0.4rem;
+    border-bottom: var(--rule-w) solid var(--rule);
+  }
+  .fields dt {
+    margin: 0;
+  }
+  .fields dd {
+    margin: 0;
+    font-size: 0.86rem;
+    color: var(--ink-dim);
+  }
+  @media (max-width: 34rem) {
+    .fields > div {
+      grid-template-columns: 1fr;
+      gap: 0.1rem;
+    }
+  }
+
+  .steps {
+    margin: 0 0 1.1rem;
+    padding-left: 1.3rem;
+    color: var(--ink-dim);
+    font-size: 0.9rem;
+    line-height: 1.7;
+  }
+  .steps li + li {
+    margin-top: 0.5rem;
+  }
+  .steps .tag {
+    margin-left: 0.3rem;
+    vertical-align: baseline;
+  }
+
+  /* ---- Bounds ---- */
+  .bounds {
+    display: grid;
+    gap: 1.15rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  }
+  .bounds article {
+    padding: 1.3rem 1.45rem;
+  }
+  .bounds h3 {
+    margin: 0.45rem 0 0.55rem;
+  }
+  .bounds p:last-child {
+    font-size: 0.88rem;
+    color: var(--ink-dim);
+    line-height: 1.6;
+  }
+
+  /* ---- Benchmarks ---- */
+  .bench__scroll {
+    overflow-x: auto;
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+    background: var(--surface-sunk);
+    box-shadow: var(--sunk-sm);
+    margin-bottom: 1.25rem;
+  }
+  .bench {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.82rem;
+  }
+  .bench th,
+  .bench td {
+    text-align: left;
+    padding: 0.55rem 0.9rem;
+    border-bottom: var(--rule-w) solid var(--rule);
+  }
+  .bench thead th {
+    color: var(--ink-mute);
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+  }
+  .bench tbody th {
+    font-weight: 500;
+    color: var(--ink-dim);
+    white-space: nowrap;
+  }
+  .bench tbody td {
+    color: var(--ink-dim);
+  }
+  .bench__cost {
+    color: var(--verify);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .bench__note {
+    color: var(--ink-mute);
+    min-width: 16rem;
+  }
+  .bench tbody tr:last-child th,
+  .bench tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  /* ---- Reproduce ---- */
+  .repro {
+    display: grid;
+    gap: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+  }
+  .repro pre {
+    font-size: 0.78rem;
+  }
+
+  /* ---- Limits ---- */
+  .limits ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 0.9rem;
+  }
+  .limits li {
+    padding: 1rem 1.2rem;
+    background: var(--surface);
+    border: var(--rule-w) solid var(--rule);
+    border-left: 3px solid var(--retract);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    font-size: 0.9rem;
+    color: var(--ink-dim);
+    line-height: 1.6;
+  }
+
+  /* ---- CTA ---- */
+  .cta {
+    margin-top: 3rem;
+    padding: 1.7rem 1.9rem;
+  }
+  .cta h2 {
+    margin-bottom: 0.85rem;
+  }
+  .cta__list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 0.8rem;
+  }
+  .cta__list li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .cta__list a {
+    font-weight: 600;
+  }
+  .cta__list span {
+    font-size: 0.85rem;
+    color: var(--ink-mute);
+    line-height: 1.5;
+  }
+</style>

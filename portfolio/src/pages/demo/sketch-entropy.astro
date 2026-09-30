@@ -1,0 +1,542 @@
+---
+import Demo from '../../layouts/Demo.astro';
+---
+
+<Demo slug="sketch-entropy">
+  <div class="stage panel" data-stage>
+    <p class="stage__loading" data-status>Loading the WebAssembly module…</p>
+
+    <div class="stage__body" data-body hidden>
+      <section class="block">
+        <h2>The two folds</h2>
+        <div class="folds">
+          <article class="fold fold--bad">
+            <p class="label">Retracted</p>
+            <h3>naive</h3>
+            <pre><code>sketch ^= seeds[b] + W</code></pre>
+            <p class="fold__why">
+              The window is only 0 to 63. Adding it straight to a seed perturbs the low bits and
+              leaves the upper 56 a function of bit counts alone. A nominal 64-bit sketch takes at
+              most <strong class="num">256</strong> distinct values.
+            </p>
+          </article>
+
+          <article class="fold fold--good">
+            <p class="label">In use</p>
+            <h3>fixed</h3>
+            <pre><code>sketch ^= seeds[b] +
+         W * 0x9E3779B97F4A7C15</code></pre>
+            <p class="fold__why">
+              Multiplying by an odd constant first spreads all 64 window values across the full
+              word, so every bit position carries window-dependent entropy.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2>Run both over the same random streams</h2>
+        <p class="prose">
+          Each stream gets a fixed length between 1 and 400 bits, drawn uniformly. Both folds are
+          applied to the identical stream sequence, so the only difference is the arithmetic. The
+          work happens in Go inside the WebAssembly module, chunked so the page stays responsive —
+          the progress bar is real.
+        </p>
+
+        <div class="controls">
+          <label class="field field--narrow">
+            <span class="label">Streams</span>
+            <input type="number" data-streams min="1000" max="200000" step="1000" value="20000" />
+          </label>
+          <label class="field field--narrow">
+            <span class="label">Seed</span>
+            <input type="number" data-seed value="1" />
+          </label>
+          <button type="button" data-run class="btn btn--primary">Run both</button>
+        </div>
+
+        <div class="bars" data-bars>
+          <p class="bars__idle">Nothing run yet.</p>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2>The case the fix does not address</h2>
+        <p class="prose">
+          A working all-zero stream is the pathological case. The window stays at zero, so the fold
+          degenerates to a parity count and yields only <strong class="num">2</strong> distinct
+          sketches at every length. The odd multiplier cannot help, because there is no window to
+          spread. This is documented rather than fixed.
+        </p>
+        <p class="prose caveat">
+          And there is still no collision guarantee. About <strong>1.5%</strong> of random streams
+          of length 1 to 200 collide, with the first collision near stream 350. The sketch is a
+          state fingerprint for divergence tracking, not a stable identifier.
+        </p>
+      </section>
+
+      <section class="block">
+        <h2>Where the bug had already spread</h2>
+        <p class="prose">
+          The core fold was fixed and covered by
+          <code>TestSketchEntropy</code>. But two structural-calibration paths inlined the old form
+          and were never covered, so the collapsed sketch survived in the repository for as long as
+          it did. <code>fsvm.SketchTerm</code>'s doc comment said every hand-rolled ingest path
+          must use it — and a comment did not stop it happening twice. The fix was two call sites
+          plus assertions that check each one independently.
+        </p>
+        <pre class="wide"><code>internal/transponder/structural.go:64   s.Sketch ^= s.Seeds[b] + uint64(s.W)   // was
+internal/transponder/threshold.go:116  s.Sketch ^= s.Seeds[b] + uint64(s.W)   // was
+
+// now, in both places:
+s.Sketch ^= fsvm.SketchTerm(s.Seeds, b, s.W)</code></pre>
+        <p class="prose">
+          Reverting either fix makes the regression test fail: distinct sketches drop from about
+          1,982 per 2,000 streams to <strong class="num">255</strong>. That is the only way a
+          finding like this stays fixed — not a comment, not a convention, an assertion.
+        </p>
+      </section>
+    </div>
+  </div>
+</Demo>
+
+<script>
+  import { invoke } from '../../lib/fib';
+  import { need, nextFrame, setStatus } from '../../lib/ui';
+
+  interface EntropyOut {
+    variant: string;
+    /** Cumulative across the session, so it is safe to display directly. */
+    distinct: number;
+    total: number;
+    collisions: number;
+    chunkDistinct: number;
+    chunkTotal: number;
+    firstCollisionInChunk: number;
+    cap: number;
+    meanPopcount: number;
+    seed: number;
+    minLen: number;
+    maxLen: number;
+    done: boolean;
+    offset: number;
+    session: string;
+  }
+
+  const status = need<HTMLElement>('[data-status]');
+  const body = need<HTMLElement>('[data-body]');
+  const streamsInput = need<HTMLInputElement>('[data-streams]');
+  const seedInput = need<HTMLInputElement>('[data-seed]');
+  const runBtn = need<HTMLButtonElement>('[data-run]');
+  const barsBox = need<HTMLElement>('[data-bars]');
+
+  interface Acc {
+    distinct: number;
+    total: number;
+    collisions: number;
+    firstCollision: number;
+    pop: number | null;
+    done: boolean;
+  }
+
+  function blank(): Acc {
+    return { distinct: 0, total: 0, collisions: 0, firstCollision: 0, pop: null, done: false };
+  }
+
+  /**
+   * Sweep a variant in chunks.
+   *
+   * Two things make this correct rather than merely plausible.
+   *
+   * Chunking: Go/WASM runs synchronously on the browser's event loop, so one
+   * 20,000-stream call is ~8 million steps and would freeze the tab for a
+   * second. Chunk size is 2,000 and we yield between calls, so the progress bar
+   * actually moves.
+   *
+   * Session: `distinct` is only meaningful as a union across the whole sweep.
+   * Passing a session id makes the Go side carry the seen-set between calls and
+   * return a cumulative count. Without it, each chunk reports its own distinct
+   * total, and adding those up over-counts badly — the naive fold saturates at
+   * 256 per chunk, so three chunks would claim 768 distinct values for a fold
+   * that mathematically cannot exceed 256.
+   */
+  async function sweep(
+    variant: string,
+    streams: number,
+    seed: number,
+    session: string,
+  ): Promise<Acc> {
+    const acc = blank();
+    const CHUNK = 2000;
+    let offset = 0;
+    while (offset < streams) {
+      const { data } = await invoke<EntropyOut>('sketch.entropy', {
+        variant,
+        streams,
+        seed,
+        offset,
+        count: CHUNK,
+        minLen: 1,
+        maxLen: 400,
+        session,
+        reset: offset === 0,
+      });
+      acc.distinct = data.distinct;
+      acc.total = data.total;
+      acc.collisions = data.collisions;
+      acc.firstCollision = data.firstCollisionInChunk || acc.firstCollision;
+      acc.pop = data.meanPopcount;
+      acc.done = data.done;
+      offset += data.chunkTotal;
+      render(variant, acc, streams);
+      await nextFrame();
+    }
+    return acc;
+  }
+
+  function render(variant: string, acc: Acc, target: number): void {
+    const card = barsBox.querySelector<HTMLElement>(`[data-card="${variant}"]`);
+    if (!card) return;
+    const pct = target ? (acc.total / target) * 100 : 0;
+
+    const distinctEl = card.querySelector<HTMLElement>('[data-field="distinct"]')!;
+    const collisionsEl = card.querySelector<HTMLElement>('[data-field="collisions"]')!;
+    const popEl = card.querySelector<HTMLElement>('[data-field="pop"]')!;
+    const firstEl = card.querySelector<HTMLElement>('[data-field="first"]')!;
+    const fillEl = card.querySelector<HTMLElement>('[data-fill]')!;
+    const pctEl = card.querySelector<HTMLElement>('[data-pct]')!;
+
+    distinctEl.textContent = acc.distinct.toLocaleString('en-US');
+    collisionsEl.textContent = acc.collisions.toLocaleString('en-US');
+    popEl.textContent = acc.pop != null ? acc.pop.toFixed(1) : '—';
+    firstEl.textContent = acc.firstCollision ? acc.firstCollision.toLocaleString('en-US') : 'none yet';
+    fillEl.style.width = `${Math.min(pct, 100).toFixed(1)}%`;
+    pctEl.textContent = `${acc.total.toLocaleString('en-US')} / ${target.toLocaleString('en-US')}`;
+
+    // Distinctness as a share of the sample, which is the number that makes
+    // "256" legible next to "19,713".
+    const rate = acc.total ? (acc.distinct / acc.total) * 100 : 0;
+    card.dataset.rate = rate.toFixed(1);
+    card.dataset.done = String(acc.done);
+  }
+
+  function buildCards(variants: Array<{ key: string; label: string; cap: number; note: string }>): void {
+    barsBox.replaceChildren(
+      ...variants.map((v) => {
+        const card = document.createElement('div');
+        card.className = 'bar-card';
+        card.dataset.card = v.key;
+        card.dataset.kind = v.key;
+
+        const head = document.createElement('div');
+        head.className = 'bar-card__head';
+        const h = document.createElement('h3');
+        h.textContent = v.label;
+        const pct = document.createElement('span');
+        pct.className = 'bar-card__pct num';
+        pct.dataset.pct = '';
+        pct.textContent = 'not started';
+        head.append(h, pct);
+
+        const track = document.createElement('div');
+        track.className = 'bar-card__track';
+        const fill = document.createElement('div');
+        fill.className = 'bar-card__fill';
+        fill.dataset.fill = '';
+        fill.style.width = '0%';
+        track.append(fill);
+
+        const dl = document.createElement('dl');
+        dl.className = 'bar-card__stats';
+        const rows: Array<[string, string]> = [
+          ['distinct sketches', 'distinct'],
+          ['collisions', 'collisions'],
+          ['mean popcount', 'pop'],
+          ['first collision', 'first'],
+        ];
+        for (const [label, field] of rows) {
+          const dt = document.createElement('dt');
+          dt.textContent = label;
+          const dd = document.createElement('dd');
+          dd.className = 'num';
+          dd.dataset.field = field;
+          dd.textContent = '—';
+          dl.append(dt, dd);
+        }
+
+        const cap = document.createElement('p');
+        cap.className = 'bar-card__cap';
+        cap.textContent = v.note;
+
+        card.append(head, track, dl, cap);
+        return card;
+      }),
+    );
+  }
+
+  async function boot(): Promise<void> {
+    try {
+      await invoke('fsvm.meta', {});
+      body.hidden = false;
+      status.hidden = true;
+      buildCards([
+        {
+          key: 'naive',
+          label: 'naive · seeds[b] + W',
+          cap: 256,
+          note: 'Theoretical ceiling 256 distinct values, from 2 seeds × 64 window values. It cannot do better than that however many streams you feed it.',
+        },
+        {
+          key: 'fixed',
+          label: 'fixed · seeds[b] + W × odd',
+          cap: 0,
+          note: 'No structural ceiling. Distinctness tracks the sample size, which is the entire point of the fix.',
+        },
+      ]);
+    } catch (err) {
+      setStatus(status, (err as Error).message, 'error');
+    }
+  }
+
+  runBtn.addEventListener('click', async () => {
+    runBtn.disabled = true;
+    runBtn.textContent = 'Running…';
+    const streams = Math.max(Number(streamsInput.value) || 20000, 100);
+    const seed = Number(seedInput.value) || 1;
+    try {
+      buildCards([
+        {
+          key: 'naive',
+          label: 'naive · seeds[b] + W',
+          cap: 256,
+          note: 'Theoretical ceiling 256 distinct values, from 2 seeds × 64 window values. It cannot do better than that however many streams you feed it.',
+        },
+        {
+          key: 'fixed',
+          label: 'fixed · seeds[b] + W × odd',
+          cap: 0,
+          note: 'No structural ceiling. Distinctness tracks the sample size, which is the entire point of the fix.',
+        },
+      ]);
+      // Sequential, not parallel: both sweeps hammer the same event loop.
+      await sweep('naive', streams, seed, 'naive-sweep');
+      await sweep('fixed', streams, seed, 'fixed-sweep');
+      // Hand the accumulated seen-sets back so a long-lived tab does not carry
+      // them for the rest of the session.
+      try {
+        await invoke('sketch.sessions.reset', {});
+      } catch {
+        // Non-fatal: the maps are bounded and a later sweep resets its own.
+      }
+    } catch (err) {
+      setStatus(status, (err as Error).message, 'error');
+    } finally {
+      runBtn.disabled = false;
+      runBtn.textContent = 'Run both';
+    }
+  });
+
+  void boot();
+</script>
+
+<style>
+  .stage {
+    padding: 1.6rem 1.75rem 1.75rem;
+  }
+  .stage__loading {
+    color: var(--ink-dim);
+    padding: 2rem 0;
+    text-align: center;
+  }
+  .stage__loading[data-kind='error'] {
+    color: var(--retract-lit);
+    text-align: left;
+    white-space: pre-wrap;
+  }
+
+  .block + .block {
+    margin-top: 2.75rem;
+    padding-top: 2.25rem;
+    border-top: var(--rule-w) solid var(--rule);
+  }
+  h2 {
+    font-size: 1.3rem;
+    margin-bottom: 1rem;
+  }
+  h3 {
+    font-size: 1rem;
+  }
+
+  .prose {
+    color: var(--ink-dim);
+    font-size: 0.93rem;
+    line-height: 1.65;
+    max-width: var(--measure);
+    margin-bottom: 1.1rem;
+  }
+  .prose.caveat {
+    padding: 1rem 1.2rem;
+    border-left: 3px solid var(--retract);
+    background: var(--retract-wash);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  }
+
+  pre.wide {
+    font-size: 0.75rem;
+    line-height: 1.7;
+    margin: 1rem 0;
+    overflow-x: auto;
+  }
+
+  /* ---- Folds ---- */
+  .folds {
+    display: grid;
+    gap: 1.15rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  }
+  .fold {
+    padding: 1.25rem 1.4rem;
+    background: var(--surface);
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+  }
+  .fold--bad {
+    border-left: 3px solid var(--retract);
+  }
+  .fold--good {
+    border-left: 3px solid var(--verify);
+  }
+  .fold h3 {
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    margin: 0.4rem 0 0.75rem;
+  }
+  .fold pre {
+    font-size: 0.76rem;
+    margin-bottom: 0.85rem;
+  }
+  .fold__why {
+    font-size: 0.86rem;
+    color: var(--ink-dim);
+    line-height: 1.6;
+  }
+
+  /* ---- Controls ---- */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+    margin-bottom: 1.5rem;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .field--narrow {
+    flex: 0 0 9rem;
+  }
+  .btn--primary {
+    color: var(--brass-lit);
+    border-color: var(--brass-dim);
+  }
+
+  /* ---- Result cards ---- */
+  .bars__idle {
+    color: var(--ink-mute);
+    font-size: 0.88rem;
+  }
+  .bars {
+    display: grid;
+    gap: 1.25rem;
+  }
+  .bar-card {
+    background: var(--surface-sunk);
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--sunk-sm);
+    padding: 1.2rem 1.35rem;
+  }
+  .bar-card[data-kind='naive'] {
+    border-color: color-mix(in oklab, var(--retract) 45%, var(--rule));
+  }
+  .bar-card[data-kind='fixed'] {
+    border-color: color-mix(in oklab, var(--verify) 45%, var(--rule));
+  }
+
+  .bar-card__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .bar-card__head h3 {
+    font-family: var(--font-mono);
+  }
+  .bar-card__pct {
+    font-size: 0.76rem;
+    color: var(--ink-mute);
+  }
+
+  .bar-card__track {
+    height: 10px;
+    margin: 0.85rem 0 1rem;
+    border-radius: 999px;
+    background: var(--surface);
+    box-shadow: var(--sunk-sm);
+    border: var(--rule-w) solid var(--rule);
+    overflow: hidden;
+  }
+  .bar-card__fill {
+    height: 100%;
+    width: 0;
+    border-radius: 999px;
+    transition: width 0.18s var(--ease);
+  }
+  [data-kind='naive'] .bar-card__fill {
+    background: var(--retract);
+  }
+  [data-kind='fixed'] .bar-card__fill {
+    background: var(--verify);
+  }
+
+  .bar-card__stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+    gap: 0.75rem 1.25rem;
+    margin: 0;
+  }
+  .bar-card__stats dt {
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    margin-bottom: 0.15rem;
+  }
+  .bar-card__stats dd {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 700;
+  }
+  [data-kind='naive'] .bar-card__stats dd {
+    color: var(--retract-lit);
+  }
+  [data-kind='fixed'] .bar-card__stats dd {
+    color: var(--verify-lit);
+  }
+
+  .bar-card__cap {
+    margin-top: 1rem;
+    font-size: 0.79rem;
+    color: var(--ink-mute);
+    line-height: 1.55;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bar-card__fill {
+      transition: none;
+    }
+  }
+</style>

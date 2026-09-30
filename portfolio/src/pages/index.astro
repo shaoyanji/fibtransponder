@@ -1,0 +1,381 @@
+---
+import Base from '../layouts/Base.astro';
+import Metric from '../components/Metric.astro';
+import DemoCard from '../components/DemoCard.astro';
+import { demos } from '../data/demos';
+import { retractions } from '../data/retractions';
+
+const headline = [
+  { value: '30', unit: 'ns/bit', label: 'Core step, 0 allocs', tone: 'verified' as const },
+  { value: '96', unit: 'B', label: 'State size, pinned by test', tone: 'verified' as const },
+  { value: '14', unit: 'ns/bit', label: 'Word-level fast path', tone: 'verified' as const },
+  { value: '177', unit: 'tests', label: 'Plus 57 benchmarks', tone: 'verified' as const },
+];
+
+/*
+  Deco sunburst, built as ONE path rather than an array of <line> elements.
+
+  Astro interpolates an array into an <svg> as HTML text nodes, not SVG nodes,
+  so a mapped array of elements silently renders nothing. A single path with a
+  computed `d` avoids the problem entirely and is fewer DOM nodes besides.
+
+  It is also an honest picture of the calibration array: many radii of different
+  lengths, all reading one input.
+*/
+const RAYS = 24;
+const CX = 110;
+const CY = 110;
+const sunburst = Array.from({ length: RAYS }, (_, i) => {
+  const a = (i * Math.PI * 2) / RAYS;
+  const r1 = 64;
+  const r2 = i % 2 === 0 ? 104 : 88;
+  const x1 = (CX + Math.cos(a) * r1).toFixed(1);
+  const y1 = (CY + Math.sin(a) * r1).toFixed(1);
+  const x2 = (CX + Math.cos(a) * r2).toFixed(1);
+  const y2 = (CY + Math.sin(a) * r2).toFixed(1);
+  return `M${x1} ${y1}L${x2} ${y2}`;
+}).join('');
+---
+
+<Base
+  title="fibtransponder — a Fibonacci-radix streaming state machine, and what I got wrong"
+  description="A measurement-first research substrate: ~30 ns per bit, zero allocations, 96-byte state. Includes the claims I withdrew and the bugs I found in my own code."
+  kicker="Research substrate · Go 1.25 · MIT"
+>
+  <!-- ── Hero ─────────────────────────────────────────────────────────── -->
+  <section class="hero">
+    <div class="hero__copy">
+      <h1>
+        A state machine that reads bits and <em>tells you what it saw</em>, in thirty
+        nanoseconds.
+      </h1>
+
+      <p class="lede measure">
+        Most language models begin by forcing a continuous signal through a learned discrete
+        vocabulary. This project asks a different question: what if the token is not a symbol from a
+        learned set, but <strong>which detectors are firing and how fast</strong>?
+      </p>
+
+      <p class="measure">
+        The answer is a <strong>Fibonacci-radix streaming state machine</strong> — a deterministic
+        core that ingests a boolean stream at O(1) per bit with a fixed 96-byte state, emits events
+        on the structure it finds, and carries a 64-bit fingerprint of everything it has read.
+        A small array of differently-calibrated instances reads the same stream in parallel and
+        produces a multi-dimensional signal with no vocabulary and no training step.
+      </p>
+
+      <div class="hero__cta">
+        <a class="btn btn--primary" href="/demos">See it running</a>
+        <a class="btn" href="/retractions">What I got wrong</a>
+      </div>
+    </div>
+
+    <div class="hero__panel panel" aria-hidden="true">
+      <svg viewBox="0 0 220 220" role="presentation" focusable="false">
+        <defs>
+          <linearGradient id="brassRay" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="var(--brass-lit)" />
+            <stop offset="1" stop-color="var(--brass-dim)" />
+          </linearGradient>
+        </defs>
+        <path d={sunburst} stroke="url(#brassRay)" fill="none" stroke-width="1.5" stroke-linecap="butt" />
+        <circle cx={CX} cy={CY} r="58" stroke="var(--rule-firm)" stroke-width="2" fill="none" />
+        <circle cx={CX} cy={CY} r="41" stroke="var(--rule)" stroke-width="1" fill="none" />
+        <circle cx={CX} cy={CY} r="7" fill="var(--brass)" />
+        <text
+          x={CX}
+          y={CY - 2}
+          text-anchor="middle"
+          fill="var(--ink)"
+          font-family="var(--font-mono)"
+          font-size="20"
+          font-weight="700">r</text>
+        <text
+          x={CX}
+          y={CY + 18}
+          text-anchor="middle"
+          fill="var(--ink-mute)"
+          font-family="var(--font-mono)"
+          font-size="9"
+          letter-spacing="2.4">DILATE</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- ── Measured, not claimed ────────────────────────────────────────── -->
+  <section class="metrics" aria-label="Headline measurements">
+    {
+      headline.map((m) => (
+        <Metric
+          value={m.value}
+          unit={m.unit}
+          label={m.label}
+          tone={m.tone}
+        />
+      ))
+    }
+  </section>
+
+  <p class="srcnote measure">
+    All figures measured on AMD EPYC 7763, Go 1.25, and re-measured after the sketch fold fix.
+    <a href="/method#benchmarks">Method and caveats →</a>
+  </p>
+
+  <!-- ── The retractions, surfaced early ──────────────────────────────── -->
+  <div class="chevron"><span>Claims I withdrew</span></div>
+
+  <section class="retract-intro measure">
+    <p class="lede">
+      The most useful thing in this repository is the list of things it does <em>not</em> claim.
+      Four of them are findings, not failures — each one is a hypothesis I formed, tested, and
+      then removed from the record.
+    </p>
+  </section>
+
+  <ul class="retract-list">
+    {
+      retractions.slice(0, 4).map((r) => (
+        <li class="panel">
+          <p class="label">
+            <span class="tag tag-retract">Retracted</span>
+          </p>
+          <h3>{r.claim}</h3>
+          <p class="retract-why">{r.withdrawnBecause}</p>
+        </li>
+      ))
+    }
+  </ul>
+
+  <p class="measure">
+    <a href="/retractions">All {retractions.length} retractions, with the numbers that killed them →</a>
+  </p>
+
+  <!-- ── Demos ────────────────────────────────────────────────────────── -->
+  <div class="chevron"><span>Interactive</span></div>
+
+  <section aria-label="Demos">
+    <p class="measure lede">
+      Six demos. Each one calls this repository's Go code compiled to WebAssembly — not a
+      JavaScript re-implementation, not a recorded screenshot. If a number on this site disagrees
+      with the repository, the tests fail.
+    </p>
+
+    <ul class="demo-grid">
+      {demos.map((d) => <DemoCard demo={d} />)}
+    </ul>
+  </section>
+
+  <!-- ── Why it matters ───────────────────────────────────────────────── -->
+  <div class="chevron"><span>Why it matters</span></div>
+
+  <section class="why">
+    <article class="panel">
+      <p class="label">01 · The indirection</p>
+      <h3>A different design point, not a better tokenizer</h3>
+      <p>
+        A learned vocabulary is language-specific, corpus-dependent, lossy below the subword
+        level, and must be trained before the model. This replaces "which of fifty thousand
+        learned symbols is this" with "which of a handful of calibrated detectors is firing, and
+        at what rate". That is a different design point, not an incremental improvement on
+        BPE.
+      </p>
+    </article>
+
+    <article class="panel">
+      <p class="label">02 · The bound</p>
+      <h3>Complexity bounded by construction</h3>
+      <p>
+        Ingest is O(1) per bit. The state is <strong>96 bytes</strong> and does not grow with
+        stream length — pinned by <code>TestStateSize</code>. When adjacency occurs, semantic
+        indices are rescaled <em>retrospectively without materialising data</em>: the meaning
+        changes, the storage does not. That is an algorithmic idea, not a wrapper.
+      </p>
+    </article>
+
+    <article class="panel">
+      <p class="label">03 · The discipline</p>
+      <h3>Benchmarks that were deleted, not kept</h3>
+      <p>
+        <code>docs/BENCHMARKS.md</code> documents that earlier figures citing unnamed Celeron and
+        Pentium hosts were <strong>removed rather than retained</strong>, then re-measured with the
+        hardware named. It also documents an earlier sketch fold that produced only 256 distinct
+        values where a 64-bit word was claimed, and the arithmetic that caused it.
+      </p>
+    </article>
+
+    <article class="panel">
+      <p class="label">04 · The breadth</p>
+      <h3>One primitive, six surfaces</h3>
+      <p>
+        A text sensor, an image codec over Hilbert-curve traversal, a self-synchronising
+        run-length compressor, WHT/FFT/autocorrelation analysis, an adaptive calibration loop, and
+        a memory-queue sidecar with revalidation. Each is small; that they all sit on one
+        load-bearing primitive is the point.
+      </p>
+    </article>
+  </section>
+
+  <section class="limits panel framed measure">
+    <h2>What this project does not claim</h2>
+    <ul>
+      <li>It does not replace BPE, or any tokenizer. It replaces nothing.</li>
+      <li>It does not replace a transformer, and no model was trained on top of it.</li>
+      <li>The sketch has no collision guarantee — about 1.5% of short random streams collide.</li>
+      <li>
+        A classifier accuracy figure once published from this repo was <strong>withdrawn</strong>:
+        it had no train/test split and was measured on its own tuning data.
+      </li>
+      <li>It is not faster than anything. It is a different primitive, characterised.</li>
+    </ul>
+  </section>
+</Base>
+
+<style>
+  /* ── Hero ───────────────────────────────────────────────────────────── */
+  .hero {
+    display: grid;
+    gap: clamp(1.5rem, 4vw, 3rem);
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.65fr);
+    align-items: center;
+    margin-bottom: 3rem;
+  }
+  @media (max-width: 60rem) {
+    .hero {
+      grid-template-columns: 1fr;
+    }
+    .hero__panel {
+      display: none;
+    }
+  }
+
+  h1 em {
+    font-style: normal;
+    color: var(--brass-lit);
+  }
+
+  .lede {
+    font-size: 1.12rem;
+    color: var(--ink-dim);
+    line-height: 1.6;
+  }
+
+  .hero__copy p {
+    margin-top: 1.1rem;
+  }
+  .hero__copy p:first-of-type {
+    margin-top: 1.5rem;
+  }
+
+  .hero__cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 2rem;
+  }
+
+  .btn--primary {
+    color: var(--brass-lit);
+    border-color: var(--brass-dim);
+  }
+
+  .hero__panel {
+    display: grid;
+    place-items: center;
+    padding: 1.5rem;
+  }
+  .hero__panel svg {
+    width: min(100%, 15rem);
+    height: auto;
+  }
+
+  /* ── Metrics ────────────────────────────────────────────────────────── */
+  .metrics {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  }
+
+  .srcnote {
+    margin-top: 0.9rem;
+    font-size: 0.84rem;
+    color: var(--ink-mute);
+  }
+
+  /* ── Retractions ────────────────────────────────────────────────────── */
+  .retract-intro {
+    margin-bottom: 1.75rem;
+  }
+
+  .retract-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1.5rem;
+    display: grid;
+    gap: 1.15rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  }
+
+  .retract-list li {
+    padding: 1.35rem 1.4rem;
+    border-left: 3px solid var(--retract);
+  }
+
+  .retract-list h3 {
+    font-size: 1.02rem;
+    margin: 0.6rem 0 0.5rem;
+    line-height: 1.35;
+  }
+
+  .retract-why {
+    color: var(--ink-dim);
+    font-size: 0.9rem;
+    line-height: 1.55;
+  }
+
+  /* ── Demos ──────────────────────────────────────────────────────────── */
+  .demo-grid {
+    list-style: none;
+    padding: 0;
+    margin: 1.75rem 0 0;
+    display: grid;
+    gap: 1.15rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  }
+
+  /* ── Why ────────────────────────────────────────────────────────────── */
+  .why {
+    display: grid;
+    gap: 1.15rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  }
+  .why article {
+    padding: 1.4rem 1.5rem;
+  }
+  .why h3 {
+    font-size: 1.06rem;
+    margin: 0.55rem 0 0.6rem;
+  }
+  .why p:last-child {
+    color: var(--ink-dim);
+    font-size: 0.92rem;
+    line-height: 1.6;
+  }
+
+  /* ── Limits ─────────────────────────────────────────────────────────── */
+  .limits {
+    margin-top: 3rem;
+    padding: 1.75rem 1.9rem;
+  }
+  .limits h2 {
+    font-size: 1.25rem;
+    margin-bottom: 0.9rem;
+  }
+  .limits ul {
+    margin: 0;
+    padding-left: 1.2rem;
+    color: var(--ink-dim);
+  }
+  .limits li + li {
+    margin-top: 0.5rem;
+  }
+</style>

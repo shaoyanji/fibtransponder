@@ -1,0 +1,515 @@
+/* ============================================================================
+   fibtransponder — design tokens
+   ============================================================================
+
+   The brief was neumorphism + art deco, which pull in opposite directions.
+   Neumorphism is soft, tactile, low-contrast, shadow-based. Art deco is hard,
+   symmetrical, geometric, high-contrast, ruled.
+
+   The resolution: a machined brass instrument. The *panels* are neumorphic --
+   soft, extruded, catching light from the top left. The *framing* is deco --
+   stepped corners, double rules, chevrons, strict symmetry. Neither wins; they
+   occupy different jobs.
+
+   ACCESSIBILITY IS A HARD CONSTRAINT, NOT A PREFERENCE.
+
+   Neumorphism fails WCAG by construction: WCAG 1.4.11 requires 3:1 for
+   non-text boundaries, and the technique's defining property is that its
+   edges have no contrast against their background. So:
+
+     - Soft shadows are only ever on non-text chrome: panel containers, buttons,
+       slider tracks, inset wells.
+     - All text sits on a flat --surface at >= 7:1 (AAA body).
+     - All boundaries and dividers are drawn with real rules and borders, never
+       with shadow contrast alone.
+
+   If a control cannot be made legible under that rule, it gets a border. Never
+   a lighter shadow.
+   ========================================================================= */
+
+:root {
+  color-scheme: dark light;
+
+  /* --- Dark (default): obsidian, slate, brass --------------------------- */
+  --surface:        #171a20;  /* panels, cards */
+  --surface-sunk:   #12151a;  /* inset wells, code, canvas backdrops */
+  --surface-raised: #1e222a;  /* hover, active chrome */
+
+  /* Neumorphic shadow pair. Light from top-left, dark from bottom-right. */
+  --sh-light: #232833;
+  --sh-dark:  #0b0d11;
+  --sh-light-a: 0.55;
+  --sh-dark-a:  0.75;
+
+  --ink:      #e8e6e1;  /* 13.97:1 on --surface */
+  --ink-dim:  #a8aeb9;  /* 7.82:1  */
+  --ink-mute: #858b98;  /* 5.10:1  */
+
+  --rule:      #2e3540;  /* decorative dividers only; see --rule-firm */
+  --rule-firm: #5d697c;  /* 3.13:1, so it can bound a real control */
+
+  /* Semantic accents. These carry meaning, not mood. Every value below was
+     solved against both --surface and --surface-sunk and clears WCAG AA for
+     body text; the *_lit variants are for emphasis, the base for structure. */
+  --brass:      #c9a227;  /* THE CLAIM: something asserted, a headline number */
+  --brass-lit:  #e6c766;
+  --brass-dim:  #8a7020;
+  --verify:     #4aa8a0;  /* VERIFIED: a measured, reproducible result */
+  --verify-lit: #6fc7bf;
+  --retract:    #d4615b;  /* RETRACTED: a claim that was withdrawn */
+  --retract-lit:#e0857e;
+  --retract-wash: color-mix(in oklab, var(--retract) 12%, var(--surface));
+
+  --focus: #7fb4e8;
+
+  /* Neumorphic geometry.
+     The shadows are the whole technique, so they cannot be too subtle to see --
+     but they are also the only thing that fails WCAG, so every surface using
+     them also carries a border. */
+  --radius:    14px;
+  --radius-sm: 8px;
+  --radius-xs: 4px;
+  --raise:  -6px -6px 14px var(--sh-light), 6px 6px 14px var(--sh-dark);
+  --raise-sm: -3px -3px 7px var(--sh-light), 3px 3px 7px var(--sh-dark);
+  --sunk:  inset 4px 4px 9px var(--sh-dark), inset -4px -4px 9px var(--sh-light);
+  --sunk-sm: inset 2px 2px 5px var(--sh-dark), inset -2px -2px 5px var(--sh-light);
+
+  /* Deco geometry */
+  --step: 8px;            /* staircase unit for stepped corners */
+  --rule-w: 1px;
+  --rule-w-firm: 2px;
+
+  --font-display: 'Cinzel', 'Trajan Pro', 'Optima', 'Palatino Linotype', serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', ui-monospace, monospace;
+
+  --measure: 68ch;
+  --gutter: clamp(1rem, 4vw, 3rem);
+  --shell: 1180px;
+
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    /* --- Light: bone, warm grey, aged brass --------------------------- */
+    --surface:        #e6e1d6;
+    --surface-sunk:   #ddd7ca;
+    --surface-raised: #efeae0;
+
+    --sh-light: #fdfbf6;
+    --sh-dark:  #b8b2a4;
+    --sh-light-a: 0.85;
+    --sh-dark-a:  0.55;
+
+    --ink:      #22201c;  /* 12.47:1 on --surface */
+    --ink-dim:  #4c4842;  /* 6.96:1  */
+    --ink-mute: #5b5750;  /* 5.01:1  */
+
+    --rule:      #cdc6b6;  /* decorative dividers only */
+    --rule-firm: #868071;  /* 3.02:1, so it can bound a real control */
+
+    --brass:      #715910;
+    --brass-lit:  #6b5410;
+    --brass-dim:  #a08832;
+    --verify:     #1d6761;
+    --verify-lit: #175a54;
+    --retract:    #9c2f2a;
+    --retract-lit:#7e211d;
+    --retract-wash: color-mix(in oklab, var(--retract) 8%, var(--surface));
+
+    --focus: #1a5fa8;
+  }
+}
+
+/* ============================================================================
+   Reset
+   ========================================================================= */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+* { margin: 0; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body {
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: clamp(1rem, 0.95rem + 0.25vw, 1.075rem);
+  line-height: 1.65;
+  font-feature-settings: 'kern' 1, 'liga' 1;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Every interactive element gets a real focus ring. Neumorphism has no edge
+   contrast, so this cannot rely on the surface boundary. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: var(--radius-xs);
+}
+
+img, canvas, svg { display: block; max-width: 100%; }
+canvas { max-width: none; }
+
+::selection { background: var(--brass); color: var(--surface); }
+
+/* ============================================================================
+   Type
+   ========================================================================= */
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.18;
+  letter-spacing: 0.01em;
+  text-wrap: balance;
+}
+
+/* Cinzel is a wide Roman-inscription face, so the usual clamp tops out far
+   larger than it does for a normal serif. Cap it lower or a five-word headline
+   runs to five lines and pushes everything else off the first screen. */
+h1 { font-size: clamp(1.85rem, 1.35rem + 2vw, 2.6rem); line-height: 1.12; }
+h2 { font-size: clamp(1.3rem, 1.1rem + 0.85vw, 1.65rem); }
+h3 { font-size: clamp(1.05rem, 1rem + 0.35vw, 1.2rem); }
+
+/* Deco small caps: the signature of the style, and the reason body copy is
+   strictly sans. Applied only to short labels, never to paragraphs. */
+.label {
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.measure { max-width: var(--measure); }
+
+a {
+  color: var(--brass-lit);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+a:hover { color: var(--brass); }
+
+code, kbd, samp, pre { font-family: var(--font-mono); font-size: 0.9em; }
+
+code {
+  background: var(--surface-sunk);
+  border: var(--rule-w) solid var(--rule);
+  border-radius: var(--radius-xs);
+  padding: 0.1em 0.35em;
+}
+
+pre {
+  background: var(--surface-sunk);
+  border: var(--rule-w) solid var(--rule);
+  border-radius: var(--radius-sm);
+  padding: 1rem 1.15rem;
+  overflow-x: auto;
+  line-height: 1.6;
+}
+pre code { background: none; border: 0; padding: 0; }
+
+strong { font-weight: 650; color: var(--ink); }
+em { font-style: italic; }
+
+/* Every number on this site is a measurement, so numbers are always tabular
+   and monospaced. Proportional digits in a column of measurements make the
+   decimal points line up wrongly. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ============================================================================
+   Neumorphic panels + deco framing
+   ========================================================================= */
+
+.panel {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--raise);
+  position: relative;
+}
+
+/* The deco frame: a double rule with a gap, drawn with border + outline so it
+   survives high-contrast mode where box-shadow is suppressed. */
+.framed {
+  border: var(--rule-w-firm) solid var(--rule-firm);
+  outline: var(--rule-w) solid var(--rule);
+  outline-offset: 4px;
+}
+
+.well {
+  background: var(--surface-sunk);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--sunk);
+  border: var(--rule-w) solid var(--rule);
+}
+
+/* Stepped corner: an art-deco staircase cut from the panel. Two notches at the
+   top-right and bottom-left, which is the asymmetry deco actually used rather
+   than the modern mirrored 45-degree chamfer. */
+.stepped {
+  --s: var(--step);
+  clip-path: polygon(
+    var(--s) 0, calc(100% - var(--s) * 3) 0,
+    calc(100% - var(--s) * 3) var(--s), calc(100% - var(--s) * 2) var(--s),
+    calc(100% - var(--s) * 2) calc(var(--s) * 2), calc(100% - var(--s)) calc(var(--s) * 2),
+    calc(100% - var(--s)) calc(var(--s) * 3), 100% calc(var(--s) * 3),
+    100% calc(100% - var(--s)), calc(100% - var(--s)) calc(100% - var(--s)),
+    calc(100% - var(--s)) calc(100% - var(--s) * 2), calc(100% - var(--s) * 2) calc(100% - var(--s) * 2),
+    calc(100% - var(--s) * 2) calc(100% - var(--s) * 3), calc(100% - var(--s) * 3) calc(100% - var(--s) * 3),
+    calc(100% - var(--s) * 3) 100%, var(--s) 100%,
+    var(--s) calc(100% - var(--s) * 3), 0 calc(100% - var(--s) * 3),
+    0 var(--s), var(--s) var(--s)
+  );
+}
+
+/* Chevrons: a deco divider. Purely decorative, so hidden from assistive tech. */
+.chevron {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  /* The rules take brass; the LABEL takes ink. --brass-dim is a rule colour
+     and only reaches 2.66:1 as text on the light surface. */
+  color: var(--ink-dim);
+  margin: 2.5rem 0 1.75rem;
+}
+.chevron::before, .chevron::after {
+  content: '';
+  flex: 1;
+  height: var(--rule-w-firm);
+  background: linear-gradient(90deg, transparent, var(--rule-firm) 15%, var(--rule-firm) 85%, transparent);
+}
+.chevron > span {
+  color: var(--ink-dim);
+  font-size: 0.66rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ============================================================================
+   Semantic markers
+   ========================================================================= */
+
+/* Colour alone never carries meaning here: every semantic state also gets a
+   label and a shape. WCAG 1.4.1. */
+.mark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4em;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.mark-claim    { color: var(--brass); }
+.mark-verified { color: var(--verify); }
+.mark-retract  { color: var(--retract); }
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 0.25em 0.6em;
+  border-radius: 999px;
+  border: var(--rule-w-firm) solid currentColor;
+  white-space: nowrap;
+}
+.tag-claim    { color: var(--brass); }
+.tag-verified { color: var(--verify); }
+.tag-retract  { color: var(--retract); }
+.tag-neutral  { color: var(--ink-mute); }
+
+.retract-note {
+  border-left: 3px solid var(--retract);
+  background: var(--retract-wash);
+  padding: 1rem 1.15rem;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.claim-note {
+  border-left: 3px solid var(--brass);
+  background: color-mix(in oklab, var(--brass) 8%, var(--surface));
+  padding: 1rem 1.15rem;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.verified-note {
+  border-left: 3px solid var(--verify);
+  background: color-mix(in oklab, var(--verify) 8%, var(--surface));
+  padding: 1rem 1.15rem;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.note > p:first-child { margin-top: 0; }
+.note > p:last-child  { margin-bottom: 0; }
+
+/* ============================================================================
+   Controls
+   ========================================================================= */
+
+button, .btn {
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface);
+  border: var(--rule-w) solid var(--rule-firm);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--raise-sm);
+  padding: 0.55rem 1.1rem;
+  cursor: pointer;
+  /* An anchor styled as a button is still a link, and the default underline
+     fights the pill shape. Remove it here rather than per call site. */
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow 0.18s var(--ease), background 0.18s var(--ease),
+              transform 0.12s var(--ease);
+}
+button:hover, .btn:hover { background: var(--surface-raised); }
+button:active, .btn:active {
+  box-shadow: var(--sunk-sm);
+  transform: translateY(1px);
+}
+button[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+button[aria-pressed='true'] {
+  background: var(--surface-raised);
+  border-color: var(--brass-dim);
+  color: var(--brass-lit);
+}
+
+input[type='text'], input[type='number'], select, textarea {
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface-sunk);
+  border: var(--rule-w) solid var(--rule-firm);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--sunk-sm);
+  padding: 0.55rem 0.8rem;
+  width: 100%;
+}
+textarea { resize: vertical; min-height: 5.5rem; line-height: 1.55; }
+input::placeholder, textarea::placeholder { color: var(--ink-mute); }
+
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 1.6rem;
+  background: transparent;
+  cursor: pointer;
+}
+input[type='range']::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  box-shadow: var(--sunk-sm);
+  border: var(--rule-w) solid var(--rule);
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: -0.4rem;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--brass-dim);
+  box-shadow: var(--raise-sm);
+}
+input[type='range']::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  box-shadow: var(--sunk-sm);
+  border: var(--rule-w) solid var(--rule);
+}
+input[type='range']::-moz-range-thumb {
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--brass-dim);
+}
+
+fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+legend { padding: 0; }
+
+/* ============================================================================
+   Layout
+   ========================================================================= */
+
+.shell {
+  max-width: var(--shell);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.grid { display: grid; gap: 1.5rem; }
+.grid-2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); }
+.grid-3 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); }
+
+.stack > * + * { margin-top: var(--stack-gap, 1rem); }
+
+/* ============================================================================
+   Motion
+   ========================================================================= */
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.rise { animation: rise 0.5s var(--ease) both; }
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+.pulse { animation: pulse-soft 1.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rise, .pulse { animation: none !important; }
+  .rise { opacity: 1; transform: none; }
+}
+
+/* ============================================================================
+   Forced colours / high contrast
+   =========================================================================
+   Neumorphism is entirely shadow-based, and forced-colours mode strips
+   box-shadow. So every neumorphic surface needs a real border in that mode or
+   it becomes an invisible box. */
+
+@media (forced-colors: active) {
+  .panel, .framed, .well, button, .btn { border: 1px solid CanvasText; }
+  .mark, .tag { forced-color-adjust: none; }
+}
+
+@media (prefers-contrast: more) {
+  :root { --ink-mute: var(--ink-dim); }
+  .panel, .well, button, .btn { border-width: 2px; }
+}

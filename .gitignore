@@ -75,3 +75,11 @@ evaluation/raw_data/
 # Generated classifier output (see cmd/classify — these numbers are not a
 # measured result and must not be cited; see the header of that file)
 /classify_results.json
+
+# Portfolio site WASM build output (see `make wasm`).
+# The .wasm is compiled from internal/wasmapi plus cmd/fibwasm, and
+# wasm_exec.js is vendored from GOROOT, so neither belongs in git.
+/portfolio/public/wasm/
+/portfolio/dist/
+/portfolio/node_modules/
+/portfolio/.astro/

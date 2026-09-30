@@ -1,0 +1,95 @@
+---
+import '../styles/tokens.css';
+import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  /** Small caps kicker above the h1. */
+  kicker?: string;
+  /** Wider gutter for demo pages that own the full shell. */
+  wide?: boolean;
+}
+
+const { title, description, kicker, wide = false } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://example.com');
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical.href} />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
+    />
+
+    {/*
+      wasm_exec.js must be a classic script, not a module: it defines a global
+      `Go` that src/lib/fib.ts looks up. It is also ~17 KB and only needed on
+      demo pages, so it is deferred rather than blocking the first paint.
+    */}
+    <script is:inline define:vars={{ wasmBase: `${import.meta.env.BASE_URL.replace(/\/$/, '')}/wasm` }}>
+      // Classic script so the global `Go` lands on window before any module
+      // looks for it. `defer` cannot be used on an inline script, so the
+      // element is injected after the document is parsed instead.
+      document.addEventListener('DOMContentLoaded', () => {
+        const s = document.createElement('script');
+        s.src = `${wasmBase}/wasm_exec.js`;
+        s.async = true;
+        document.head.append(s);
+      });
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <SiteHeader />
+    <main id="main" class:list={['shell', { 'shell--wide': wide }]}>
+      {kicker && <p class="label kicker">{kicker}</p>}
+      <slot />
+    </main>
+    <SiteFooter />
+  </body>
+</html>
+
+<style>
+  .skip {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: 100;
+    background: var(--surface);
+    color: var(--ink);
+    border: 2px solid var(--focus);
+    padding: 0.7rem 1.1rem;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+  }
+  .skip:focus {
+    left: 0.75rem;
+    top: 0.75rem;
+  }
+
+  main {
+    padding-block: 2.5rem 5rem;
+  }
+  main.shell--wide {
+    max-width: 1340px;
+  }
+
+  .kicker {
+    margin-bottom: 0.7rem;
+  }
+</style>

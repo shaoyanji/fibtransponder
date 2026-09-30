@@ -1,0 +1,216 @@
+---
+import Base from '../layouts/Base.astro';
+import { retractions, standingClaims } from '../data/retractions';
+---
+
+<Base
+  title="Retractions — fibtransponder"
+  description="Six claims this repository made and withdrew, with the measurement that withdrew each one, and what replaced them."
+  kicker="Audit"
+>
+  <header class="page-head">
+    <h1>What this project got wrong</h1>
+    <p class="lede measure">
+      A research repository that only publishes its successes is a marketing document. These are
+      the claims <strong>fibtransponder</strong> made and then removed from the record, each with
+      the measurement that did it and the position that replaced it.
+    </p>
+    <p class="measure">
+      Two of these were found by writing the test that was supposed to exist. Two were found by
+      the arithmetic of the thing itself. One was found by noticing that a benchmark table had
+      mixed hardware. One was a classifier measuring itself on its own tuning data.
+    </p>
+  </header>
+
+  <div class="chevron"><span>Withdrawn</span></div>
+
+  <ol class="log">
+    {
+      retractions.map((r, i) => (
+        <li class="entry panel">
+          <p class="entry__no num" aria-hidden="true">{String(i + 1).padStart(2, '0')}</p>
+          <div class="entry__body">
+            <p class="label">
+              <span class="tag tag-retract">Retracted</span>
+              {r.pinnedAt && <code class="entry__pin">{r.pinnedAt}</code>}
+            </p>
+            <h2 class="entry__claim">“{r.claim}”</h2>
+            <p class="entry__ev"><strong>Evidence.</strong> {r.evidence}</p>
+            <p class="entry__why"><strong>Why it was withdrawn.</strong> {r.withdrawnBecause}</p>
+            <p class="entry__now verified-note note">
+              <strong>Now claimed.</strong> {r.nowClaim}
+            </p>
+          </div>
+        </li>
+      ))
+    }
+  </ol>
+
+  <div class="chevron"><span>Still standing</span></div>
+
+  <section aria-labelledby="standing">
+    <h2 id="standing" class="measure">What the project still claims</h2>
+    <p class="measure">
+      A retraction log is only useful next to the claims that survived it.
+    </p>
+
+    <ul class="standing">
+      {
+        standingClaims.map((c) => (
+          <li class="panel">
+            <h3>{c.claim}</h3>
+            <p>{c.basis}</p>
+            <code class="standing__pin">{c.pinnedAt}</code>
+          </li>
+        ))
+      }
+    </ul>
+  </section>
+
+  <section class="principle panel framed measure">
+    <h2>The rule this repository follows</h2>
+    <p>
+      A comment saying <em>“do not do the wrong thing”</em> did not stop the wrong thing happening
+      twice. An <strong>assertion</strong> did. Every retraction above is now backed by a test that
+      fails if the retracted claim starts looking true again — which is how the sketch fold bug
+      survived in two files for as long as it did, and why the regression tests here
+      <a href="https://github.com/shaoyanji/fibtransponder/blob/master/internal/transponder/sketch_fold_test.go">check both call sites independently</a>.
+    </p>
+    <p>
+      The same rule applies to this site: the interactive demos call the repository's own Go,
+      compiled to WebAssembly. A number cannot go stale here, because there is nothing to store it.
+    </p>
+  </section>
+</Base>
+
+<style>
+  .page-head {
+    margin-bottom: 2rem;
+  }
+  .page-head h1 {
+    margin-bottom: 1.1rem;
+  }
+  .page-head p + p {
+    margin-top: 1rem;
+  }
+  .lede {
+    font-size: 1.1rem;
+    color: var(--ink-dim);
+  }
+
+  .log {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 1.5rem;
+  }
+
+  .entry {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0 1.5rem;
+    padding: 1.6rem 1.75rem;
+    border-left: 3px solid var(--retract);
+  }
+
+  .entry__no {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--retract);
+    /* No opacity here. It looks like a softer accent but it compounds with the
+       colour: 0.55 alpha over the light surface lands at 2.49:1, below the
+       3:1 large-text floor. Colour alone gets 5.64:1. */
+    line-height: 1;
+  }
+
+  .entry__claim {
+    font-size: 1.18rem;
+    line-height: 1.4;
+    margin: 0.65rem 0 1rem;
+    color: var(--ink);
+  }
+
+  .entry__ev,
+  .entry__why {
+    font-size: 0.92rem;
+    line-height: 1.6;
+    color: var(--ink-dim);
+    margin-bottom: 0.7rem;
+  }
+
+  .entry__now {
+    font-size: 0.9rem;
+    line-height: 1.55;
+    margin-top: 1rem;
+  }
+
+  .entry__pin {
+    font-size: 0.66rem;
+    color: var(--ink-mute);
+    background: none;
+    border: 0;
+    padding: 0;
+  }
+
+  .standing {
+    list-style: none;
+    padding: 0;
+    margin: 1.75rem 0 0;
+    display: grid;
+    gap: 1.15rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  }
+
+  .standing li {
+    padding: 1.3rem 1.4rem;
+    border-left: 3px solid var(--verify);
+  }
+
+  .standing h3 {
+    font-size: 1rem;
+    line-height: 1.38;
+    margin-bottom: 0.5rem;
+  }
+
+  .standing p {
+    font-size: 0.88rem;
+    color: var(--ink-dim);
+    line-height: 1.55;
+    margin-bottom: 0.7rem;
+  }
+
+  .standing__pin {
+    font-size: 0.68rem;
+    color: var(--verify);
+    background: none;
+    border: 0;
+    padding: 0;
+  }
+
+  .principle {
+    margin-top: 3rem;
+    padding: 1.75rem 1.9rem;
+  }
+  .principle h2 {
+    font-size: 1.25rem;
+    margin-bottom: 0.9rem;
+  }
+  .principle p {
+    color: var(--ink-dim);
+    line-height: 1.65;
+  }
+  .principle p + p {
+    margin-top: 0.9rem;
+  }
+
+  @media (max-width: 40rem) {
+    .entry {
+      grid-template-columns: 1fr;
+      gap: 0.5rem;
+    }
+    .entry__no {
+      font-size: 1.1rem;
+    }
+  }
+</style>

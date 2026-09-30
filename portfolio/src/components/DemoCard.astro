@@ -1,0 +1,102 @@
+---
+import type { Demo } from '../data/demos';
+
+interface Props {
+  demo: Demo;
+}
+
+const { demo } = Astro.props;
+---
+
+<li>
+  <a class="card panel" href={`/demo/${demo.slug}`}>
+    <p class="label card__kicker">
+      {demo.kicker}
+      {demo.needsWasm && <span class="card__wasm" title="Runs the repository's Go compiled to WebAssembly">wasm</span>}
+    </p>
+
+    <h3>{demo.title}</h3>
+    <p class="card__blurb">{demo.blurb}</p>
+
+    <p class="card__methods">
+      {demo.methods.map((m) => <code>{m}</code>)}
+    </p>
+
+    <span class="card__go" aria-hidden="true">→</span>
+  </a>
+</li>
+
+<style>
+  .card {
+    display: block;
+    position: relative;
+    height: 100%;
+    padding: 1.4rem 1.5rem 1.5rem;
+    text-decoration: none;
+    color: inherit;
+    transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
+  }
+
+  /* Lift on hover, but the focus ring is the real affordance. */
+  .card:hover {
+    transform: translateY(-3px);
+    box-shadow:
+      -7px -7px 16px var(--sh-light),
+      7px 7px 16px var(--sh-dark);
+  }
+  .card:hover .card__go {
+    color: var(--brass);
+    transform: translateX(3px);
+  }
+
+  .card__kicker {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .card__wasm {
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+    text-transform: none;
+    color: var(--verify);
+    border: var(--rule-w) solid color-mix(in oklab, var(--verify) 45%, transparent);
+    border-radius: 999px;
+    padding: 0.1em 0.45em;
+  }
+
+  h3 {
+    font-size: 1.05rem;
+    line-height: 1.32;
+    margin-bottom: 0.5rem;
+  }
+
+  .card__blurb {
+    color: var(--ink-dim);
+    font-size: 0.89rem;
+    line-height: 1.55;
+  }
+
+  .card__methods {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.9rem;
+  }
+
+  .card__methods code {
+    font-size: 0.68rem;
+    color: var(--ink-mute);
+    background: var(--surface-sunk);
+  }
+
+  .card__go {
+    position: absolute;
+    right: 1.4rem;
+    bottom: 1.1rem;
+    color: var(--ink-mute);
+    transition: transform 0.2s var(--ease), color 0.2s var(--ease);
+  }
+</style>

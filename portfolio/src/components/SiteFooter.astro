@@ -1,0 +1,115 @@
+---
+const year = new Date().getFullYear();
+---
+
+<footer class="site-foot">
+  <div class="shell inner">
+    <div class="deco" aria-hidden="true"></div>
+
+    <div class="cols">
+      <section>
+        <h2 class="label">What this is</h2>
+        <p>
+          A Fibonacci-radix streaming state machine: <strong>~30 ns per input bit</strong>,
+          <strong>zero heap allocations</strong>, and a <strong>96-byte state</strong> that does not
+          grow with stream length.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="label">What it is not</h2>
+        <p>
+          Not a tokenizer replacement. Not a transformer replacement. Not faster than anything in
+          particular — it is a different primitive, measured honestly.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="label">Every number is computed</h2>
+        <p>
+          Nothing on this site is a recorded screenshot or a hard-coded fixture. The interactive
+          demos call this repository's own Go, compiled to WebAssembly, so the figures are the same
+          ones <code>make ci</code> asserts on.
+        </p>
+      </section>
+    </div>
+
+    <div class="base">
+      <p>
+        <span class="num">Go {Astro.locals?.goVersion ?? '1.25'}</span> ·
+        <span class="num">MIT</span> ·
+        <a href="https://github.com/shaoyanji/fibtransponder">shaoyanji/fibtransponder</a>
+      </p>
+      <p class="muted">
+        {year} · Built as an argument about reproducible measurement, not a product.
+      </p>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .site-foot {
+    border-top: var(--rule-w) solid var(--rule);
+    background: var(--surface);
+    margin-top: 4rem;
+    padding-block: 2.5rem 2rem;
+  }
+
+  /* Deco rule: a brass hairline with a stepped diamond, the style's signature. */
+  .deco {
+    height: 3px;
+    margin-bottom: 2rem;
+    background:
+      linear-gradient(90deg, transparent, var(--brass-dim) 12%, var(--brass) 50%, var(--brass-dim) 88%, transparent);
+    position: relative;
+  }
+  .deco::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 11px;
+    height: 11px;
+    transform: translate(-50%, -50%) rotate(45deg);
+    background: var(--surface);
+    border: 2px solid var(--brass);
+  }
+
+  .cols {
+    display: grid;
+    gap: 1.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  }
+
+  .cols h2 {
+    font-family: var(--font-body);
+    font-size: 0.7rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-bottom: 0.55rem;
+  }
+
+  .cols p {
+    color: var(--ink-dim);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    max-width: 40ch;
+  }
+
+  .base {
+    margin-top: 2.25rem;
+    padding-top: 1.25rem;
+    border-top: var(--rule-w) solid var(--rule);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    justify-content: space-between;
+    font-size: 0.82rem;
+    color: var(--ink-dim);
+  }
+
+  .muted {
+    color: var(--ink-mute);
+  }
+</style>

@@ -1,0 +1,628 @@
+---
+import Demo from '../../layouts/Demo.astro';
+---
+
+<Demo slug="dilation-tree">
+  <div class="stage panel" data-stage>
+    <p class="stage__loading" data-status>Loading the WebAssembly module…</p>
+
+    <div class="stage__body" data-body hidden>
+      <div class="controls">
+        <div class="controls__row">
+          <fieldset class="seg">
+            <legend class="label">Compare</legend>
+            <div class="seg__group" role="radiogroup" aria-label="Input">
+              <button type="button" data-src="prose" aria-pressed="true">Prose</button>
+              <button type="button" data-src="code" aria-pressed="false">Code</button>
+              <button type="button" data-src="noise" aria-pressed="false">Noise</button>
+              <button type="button" data-src="custom" aria-pressed="false">Your text</button>
+            </div>
+          </fieldset>
+
+          <label class="field field--grow" data-custom-field hidden>
+            <span class="label">Your text</span>
+            <textarea data-text rows="2" spellcheck="false">The quick brown fox jumps over the lazy dog.</textarea>
+          </label>
+        </div>
+      </div>
+
+      <p class="compare-note" data-compare-note></p>
+
+      <figure class="tree">
+        <figcaption class="label">
+          Burst hierarchy — every node is a span of bits, sized by dilation density
+        </figcaption>
+        <div class="tree__frame" tabindex="0" role="region" aria-label="Tree plot, scrollable">
+          <canvas data-canvas role="img" aria-label="Icicle plot of the dilation burst hierarchy" aria-describedby="tree-alt"></canvas>
+        </div>
+        <p id="tree-alt" class="visually-hidden" data-alt></p>
+        <div class="tree__legend">
+          <span class="legend__item">
+            <span class="swatch swatch--hot" aria-hidden="true"></span> high dilation density
+          </span>
+          <span class="legend__item">
+            <span class="swatch swatch--cold" aria-hidden="true"></span> low density
+          </span>
+          <span class="legend__item">Node width is the bit span it covers</span>
+        </div>
+      </figure>
+
+      <div class="readout">
+        <div class="readout__cell">
+          <p class="label">Depth</p>
+          <p class="readout__big num" data-depth>—</p>
+        </div>
+        <div class="readout__cell">
+          <p class="label">Nodes</p>
+          <p class="readout__big num" data-nodes>—</p>
+        </div>
+        <div class="readout__cell">
+          <p class="label">Leaves</p>
+          <p class="readout__big num" data-leaves>—</p>
+        </div>
+        <div class="readout__cell">
+          <p class="label">Dilations</p>
+          <p class="readout__big num" data-dilations>—</p>
+        </div>
+        <div class="readout__cell">
+          <p class="label">Balance</p>
+          <p class="readout__big num" data-balance>—</p>
+        </div>
+        <div class="readout__cell">
+          <p class="label">Skew</p>
+          <p class="readout__big num" data-skew>—</p>
+        </div>
+        <div class="readout__cell">
+          <p class="label">Depth entropy</p>
+          <p class="readout__big num" data-entropy>—</p>
+        </div>
+        <div class="readout__cell readout__cell--wide">
+          <p class="label">Report · verbatim from <code>dilationtree.Analyze</code></p>
+          <p class="readout__report num" data-report>—</p>
+        </div>
+      </div>
+
+      <figure class="dist">
+        <figcaption class="label">Nodes per depth level</figcaption>
+        <div class="dist__frame" tabindex="0" role="region" aria-label="Depth distribution, scrollable">
+          <canvas data-dist role="img" aria-label="A bar chart of how many nodes sit at each depth level"></canvas>
+        </div>
+      </figure>
+    </div>
+  </div>
+
+  <div class="notes">
+    <section class="note verified-note">
+      <p>
+        <strong>The whole algorithm.</strong> Take the stream of dilation events. Measure the
+        intervals between them. Group wherever an interval falls below the local mean minus half
+        the local deviation, then recurse with a tighter threshold. That is it — no parser, no
+        grammar, no model, no training.
+      </p>
+    </section>
+
+    <section class="note claim-note">
+      <p>
+        <strong>What separates.</strong> The seven metrics do not need to agree for the classes to
+        be distinguishable. Prose and code differ in burstiness, not in depth: code is roughly
+        <strong>14× burstier in time</strong> than prose at the same window size, which is the
+        substantive finding in <code>REPORT_STRUCTURAL.md</code>.
+      </p>
+    </section>
+
+    <section class="note retract-note">
+      <p>
+        <strong>Caveat.</strong> <code>dilationtree.TextToBits</code> emits eight bits per
+        <em>rune</em> and truncates each code point to its low byte. For ASCII that is identical to
+        UTF-8. For anything else it is lossy, and the demo will warn you rather than quietly
+        disagreeing with the CLI. That is why the custom input says what it says.
+      </p>
+    </section>
+  </div>
+</Demo>
+
+<script>
+  import { invoke } from '../../lib/fib';
+  import { debounce, need, needAll, setStatus, token, withAlpha } from '../../lib/ui';
+
+  interface TreeNode {
+    startBit: string;
+    endBit: string;
+    dilations: number;
+    density: number;
+    scale: number;
+    children?: TreeNode[];
+    depth: number;
+    spanBits: string;
+    truncated?: boolean;
+  }
+
+  interface TreeOut {
+    totalBits: number;
+    totalDilations: number;
+    maxDepth: number;
+    totalNodes: number;
+    leafCount: number;
+    balance: number;
+    skewRatio: number;
+    depthEntropy: number;
+    meanScale: number;
+    depthDist: number[];
+    root: TreeNode | null;
+    report: string;
+    truncated: boolean;
+    nonAsciiRune?: string;
+  }
+
+  type Source = 'prose' | 'code' | 'noise' | 'custom';
+
+  const SOURCES: Record<Source, string> = {
+    prose:
+      'The Fibonacci sequence is a series of numbers where each number is the sum of the two preceding ones. It starts from 0 and 1, and continues indefinitely. The sequence appears throughout nature, from the arrangement of leaves on a stem to the spiral of a nautilus shell.',
+    code: `package main
+
+import (
+	"fmt"
+	"math"
+	"os"
+	"strconv"
+)
+
+type Node struct {
+	Value int
+	Left  *Node
+	Right *Node
+}
+
+func fib(n int) int {
+	if n <= 1 {
+		return n
+	}
+	a, b := 0, 1
+	for i := 2; i <= n; i++ {
+		a, b = b, a+b
+	}
+	return b
+}
+
+func insert(node *Node, val int) {
+	if val < node.Value {
+		if node.Left == nil {
+			node.Left = &Node{Value: val}
+		} else {
+			insert(node.Left, val)
+		}
+	} else {
+		if node.Right == nil {
+			node.Right = &Node{Value: val}
+		} else {
+			insert(node.Right, val)
+		}
+	}
+}`,
+    // A deterministic LCG, so "noise" is reproducible rather than Math.random.
+    noise: null as unknown as string,
+  };
+
+  /* ---- DOM ---- */
+  const status = need<HTMLElement>('[data-status]');
+  const body = need<HTMLElement>('[data-body]');
+  const textInput = need<HTMLTextAreaElement>('[data-text]');
+  const customField = need<HTMLElement>('[data-custom-field]');
+  const compareNote = need<HTMLElement>('[data-compare-note]');
+  const alt = need<HTMLElement>('[data-alt]');
+  const canvas = need<HTMLCanvasElement>('[data-canvas]');
+  const distCanvas = need<HTMLCanvasElement>('[data-dist]');
+
+  const out = {
+    depth: need<HTMLElement>('[data-depth]'),
+    nodes: need<HTMLElement>('[data-nodes]'),
+    leaves: need<HTMLElement>('[data-leaves]'),
+    dilations: need<HTMLElement>('[data-dilations]'),
+    balance: need<HTMLElement>('[data-balance]'),
+    skew: need<HTMLElement>('[data-skew]'),
+    entropy: need<HTMLElement>('[data-entropy]'),
+    report: need<HTMLElement>('[data-report]'),
+  };
+
+  let source: Source = 'prose';
+  let data: TreeOut | null = null;
+
+  // Build the noise corpus in the browser so the string sent to Go is plain
+  // text like the others, and the Go side does the same UTF-8 conversion.
+  function noiseText(n = 900): string {
+    let lcg = 12345 >>> 0;
+    const chars = 'abcdefghijklmnopqrstuvwxyz ';
+    let s = '';
+    for (let i = 0; i < n; i++) {
+      lcg = (Math.imul(lcg, 1664525) + 1013904223) >>> 0;
+      s += chars[lcg % chars.length];
+    }
+    return s;
+  }
+
+  async function boot(): Promise<void> {
+    try {
+      await invoke('fsvm.meta', {});
+      body.hidden = false;
+      status.hidden = true;
+      await refresh();
+    } catch (err) {
+      setStatus(status, (err as Error).message, 'error');
+    }
+  }
+
+  async function refresh(): Promise<void> {
+    try {
+      const text = source === 'custom' ? textInput.value : SOURCES[source];
+      const { data: d, warnings } = await invoke<TreeOut>('tree.build', { text });
+
+      if (source === 'custom' && !d.nonAsciiRune) {
+        compareNote.textContent = '';
+      } else if (d.nonAsciiRune) {
+        compareNote.textContent = warnings.join(' ') ||
+          `Contains “${d.nonAsciiRune}”. The tree builder emits 8 bits per rune and truncates each ` +
+            `code point to its low byte, so this input is measured differently from the command line.`;
+      } else {
+        compareNote.textContent = '';
+      }
+
+      data = d;
+      renderReadout();
+      drawTree();
+      drawDist();
+    } catch (err) {
+      setStatus(status, (err as Error).message, 'error');
+    }
+  }
+
+  const refreshDebounced = debounce(() => void refresh(), 260);
+
+  function renderReadout(): void {
+    if (!data) return;
+    out.depth.textContent = String(data.maxDepth);
+    out.nodes.textContent = data.totalNodes.toLocaleString('en-US');
+    out.leaves.textContent = data.leafCount.toLocaleString('en-US');
+    out.dilations.textContent = data.totalDilations.toLocaleString('en-US');
+    out.balance.textContent = data.balance.toFixed(4);
+    out.skew.textContent = data.skewRatio.toFixed(4);
+    out.entropy.textContent = data.depthEntropy.toFixed(4);
+    out.report.textContent = data.report || '(no dilation events in this input)';
+  }
+
+  /* ---- Icicle drawing ---- */
+  function prep(cv: HTMLCanvasElement, w: number, h: number): CanvasRenderingContext2D {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+    cv.style.width = `${w}px`;
+    cv.style.height = `${h}px`;
+    const g = cv.getContext('2d');
+    if (!g) throw new Error('canvas 2d context unavailable');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return g;
+  }
+
+  function drawTree(): void {
+    const host = canvas.parentElement;
+    const w = Math.max((host?.clientWidth ?? 800), 300);
+    const h = 300;
+    const g = prep(canvas, w, h);
+    g.clearRect(0, 0, w, h);
+
+    if (!data?.root) {
+      g.fillStyle = token('--ink-mute', '#7d838f');
+      g.font = '13px system-ui, sans-serif';
+      g.textAlign = 'center';
+      g.fillText(
+        data ? 'no dilation events — nothing to group' : 'building…',
+        w / 2,
+        h / 2,
+      );
+      g.textAlign = 'start';
+      alt.textContent = data
+        ? 'This input produced no dilation events, so the burst hierarchy is empty.'
+        : 'Building the burst hierarchy.';
+      return;
+    }
+
+    const total = data.totalBits || 1;
+    const maxDepthShown = Math.max(data.maxDepth, 1);
+    const rowH = Math.min(46, (h - 24) / (maxDepthShown + 1));
+    const maxDensity = Math.max(collectDensities(data.root), 1e-6);
+
+    const cold = token('--brass-dim', '#8a7020');
+    const hot = token('--brass-lit', '#e6c766');
+    const rule = token('--rule', '#2e3540');
+
+    const place = (node: TreeNode, y: number): void => {
+      const x0 = (Number(node.startBit) / total) * w;
+      const x1 = (Number(node.endBit) / total) * w;
+      const width = Math.max(x1 - x0, 1);
+      const t = Math.min(node.density / maxDensity, 1);
+
+      g.fillStyle = withAlpha(t > 0.5 ? hot : cold, 0.25 + t * 0.6);
+      g.fillRect(x0, y, width - 0.5, rowH - 1.5);
+      g.strokeStyle = rule;
+      g.lineWidth = 1;
+      g.strokeRect(x0 + 0.25, y + 0.25, width - 1, rowH - 2);
+
+      // Label only where it fits, so the chart is never a wall of clipped text.
+      if (width > 34) {
+        g.fillStyle = token('--ink', '#e8e6e1');
+        g.font = '10px ui-monospace, monospace';
+        g.textAlign = 'left';
+        g.save();
+        g.beginPath();
+        g.rect(x0 + 3, y, width - 6, rowH - 1.5);
+        g.clip();
+        g.fillText(String(node.dilations), x0 + 4, y + rowH / 2 + 3);
+        g.restore();
+      }
+
+      for (const child of node.children ?? []) place(child, y + rowH);
+    };
+
+    place(data.root, 12);
+
+    // Depth axis.
+    g.fillStyle = token('--ink-mute', '#7d838f');
+    g.font = '10px ui-monospace, monospace';
+    g.textAlign = 'right';
+    for (let d = 0; d <= maxDepthShown; d++) {
+      g.fillText(`d${d}`, 0, 0); // no-op guard for empty label list
+    }
+    g.textAlign = 'left';
+    for (let d = 0; d <= maxDepthShown; d++) {
+      g.fillText(`depth ${d}`, 4, 12 + d * rowH + rowH / 2 + 3);
+    }
+    g.textAlign = 'start';
+
+    // Bit axis.
+    g.fillStyle = token('--ink-mute', '#7d838f');
+    g.fillText('bit 0', 4, h - 4);
+    const endLabel = `bit ${(total - 1).toLocaleString('en-US')}`;
+    g.fillText(endLabel, w - g.measureText(endLabel).width, h - 4);
+
+    alt.textContent =
+      `Icicle plot of the burst hierarchy for ${total.toLocaleString('en-US')} bits. ` +
+      `Maximum depth ${data.maxDepth}, ${data.totalNodes} nodes, ${data.leafCount} leaves, ` +
+      `${data.totalDilations} dilation events. Balance ${data.balance.toFixed(3)}, ` +
+      `skew ${data.skewRatio.toFixed(3)}, depth entropy ${data.depthEntropy.toFixed(3)}.`;
+  }
+
+  function collectDensities(node: TreeNode): number {
+    let m = 0;
+    const walk = (n: TreeNode) => {
+      m = Math.max(m, n.density);
+      for (const c of n.children ?? []) walk(c);
+    };
+    walk(node);
+    return m;
+  }
+
+  function drawDist(): void {
+    const host = distCanvas.parentElement;
+    const w = Math.max((host?.clientWidth ?? 800), 300);
+    const h = 150;
+    const g = prep(distCanvas, w, h);
+    g.clearRect(0, 0, w, h);
+
+    const dist = data?.depthDist ?? [];
+    if (dist.length === 0) {
+      g.fillStyle = token('--ink-mute', '#7d838f');
+      g.font = '12px system-ui, sans-serif';
+      return;
+    }
+
+    const pad = { l: 34, b: 26, t: 12 };
+    const plotW = w - pad.l - 12;
+    const plotH = h - pad.b - pad.t;
+    const max = Math.max(...dist, 1);
+
+    const barW = plotW / dist.length;
+    for (let i = 0; i < dist.length; i++) {
+      const bh = (dist[i] / max) * plotH;
+      const x = pad.l + i * barW;
+      const y = pad.t + plotH - bh;
+      g.fillStyle = withAlpha(token('--verify', '#4aa8a0'), 0.75);
+      g.fillRect(x + barW * 0.15, y, barW * 0.7, bh);
+      g.strokeStyle = token('--rule', '#2e3540');
+      g.lineWidth = 1;
+      g.strokeRect(x + barW * 0.15, y, barW * 0.7, bh);
+
+      g.fillStyle = token('--ink-mute', '#7d838f');
+      g.font = '10px ui-monospace, monospace';
+      g.textAlign = 'center';
+      if (barW > 22) g.fillText(String(dist[i]), x + barW / 2, y - 3);
+      g.fillText(`d${i}`, x + barW / 2, h - 10);
+    }
+
+    g.fillStyle = token('--ink-mute', '#7d838f');
+    g.textAlign = 'right';
+    g.fillText(String(max), pad.l - 6, pad.t + 8);
+    g.textAlign = 'start';
+  }
+
+  /* ---- Events ---- */
+  for (const btn of needAll<HTMLButtonElement>('[data-src]')) {
+    btn.addEventListener('click', () => {
+      source = btn.dataset.src as Source;
+      for (const b of needAll('[data-src]')) b.setAttribute('aria-pressed', String(b === btn));
+      customField.hidden = source !== 'custom';
+      void refresh();
+    });
+  }
+  textInput.addEventListener('input', refreshDebounced);
+
+  let raf = 0;
+  window.addEventListener('resize', () => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      drawTree();
+      drawDist();
+    });
+  });
+
+  void boot();
+</script>
+
+<style>
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .stage {
+    padding: 1.5rem 1.6rem 1.6rem;
+  }
+  .stage__loading {
+    color: var(--ink-dim);
+    padding: 2rem 0;
+    text-align: center;
+  }
+  .stage__loading[data-kind='error'] {
+    color: var(--retract-lit);
+    text-align: left;
+    white-space: pre-wrap;
+  }
+
+  .controls__row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+  }
+  .seg__group {
+    display: flex;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+  }
+  .seg__group button {
+    padding: 0.45rem 0.85rem;
+    font-size: 0.85rem;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .field--grow {
+    flex: 1 1 22rem;
+  }
+
+  .compare-note {
+    font-size: 0.8rem;
+    color: var(--retract-lit);
+    line-height: 1.5;
+    margin-top: 0.9rem;
+    min-height: 1.2em;
+  }
+
+  /* ---- Tree ---- */
+  .tree {
+    margin: 1.25rem 0;
+  }
+  .tree figcaption {
+    margin-bottom: 0.55rem;
+  }
+  .tree__frame {
+    background: var(--surface-sunk);
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--sunk-sm);
+    padding: 0.75rem;
+    overflow-x: auto;
+  }
+  .tree__legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.1rem;
+    margin-top: 0.6rem;
+    font-size: 0.74rem;
+    color: var(--ink-dim);
+  }
+  .legend__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .swatch {
+    width: 0.85rem;
+    height: 0.85rem;
+    border-radius: 3px;
+    border: var(--rule-w) solid var(--rule);
+    flex-shrink: 0;
+  }
+  .swatch--hot {
+    background: var(--brass-lit);
+  }
+  .swatch--cold {
+    background: var(--brass-dim);
+  }
+
+  /* ---- Readout ---- */
+  .readout {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+  }
+  .readout__cell {
+    background: var(--surface-sunk);
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--sunk-sm);
+    padding: 0.8rem 0.9rem;
+  }
+  .readout__cell--wide {
+    grid-column: 1 / -1;
+  }
+  .readout__big {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-top: 0.25rem;
+  }
+  .readout__report {
+    font-size: 0.78rem;
+    line-height: 1.7;
+    margin-top: 0.4rem;
+    word-break: break-word;
+    color: var(--verify);
+  }
+
+  /* ---- Depth distribution ---- */
+  .dist {
+    margin: 1.5rem 0 0;
+  }
+  .dist figcaption {
+    margin-bottom: 0.55rem;
+  }
+  .dist__frame {
+    background: var(--surface-sunk);
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--sunk-sm);
+    padding: 0.75rem;
+  }
+
+  /* ---- Notes ---- */
+  .notes {
+    display: grid;
+    gap: 1rem;
+    margin-top: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+    align-items: start;
+  }
+  .notes .note {
+    font-size: 0.88rem;
+    line-height: 1.6;
+    color: var(--ink-dim);
+  }
+</style>

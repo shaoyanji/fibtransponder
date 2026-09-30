@@ -1,0 +1,78 @@
+---
+import type { Tone } from '../data/retractions';
+
+interface Props {
+  value: string;
+  unit?: string;
+  label: string;
+  tone?: Tone;
+  /** A short "how this was measured" line, shown under the label. */
+  how?: string;
+}
+
+const { value, unit, label, tone = 'verified', how } = Astro.props;
+---
+
+<div class="metric panel" data-tone={tone}>
+  <p class="metric__value">
+    <span class="num">{value}</span>
+    {unit && <span class="metric__unit num">{unit}</span>}
+  </p>
+  <p class="metric__label">{label}</p>
+  {how && <p class="metric__how">{how}</p>}
+</div>
+
+<style>
+  .metric {
+    padding: 1.1rem 1.2rem 1.15rem;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .metric__value {
+    display: flex;
+    align-items: baseline;
+    gap: 0.3em;
+    line-height: 1;
+  }
+
+  .metric__value .num {
+    font-size: clamp(1.7rem, 1.3rem + 1.4vw, 2.25rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .metric__unit {
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: var(--ink-mute);
+  }
+
+  .metric__label {
+    font-size: 0.76rem;
+    letter-spacing: 0.05em;
+    color: var(--ink-dim);
+    line-height: 1.4;
+  }
+
+  .metric__how {
+    font-size: 0.68rem;
+    color: var(--ink-mute);
+    line-height: 1.4;
+  }
+
+  /* Tone is a colour accent only; the label always states the same information
+     in words, so nothing depends on hue alone. */
+  [data-tone='verified'] .metric__value .num {
+    color: var(--verify);
+  }
+  [data-tone='claim'] .metric__value .num {
+    color: var(--brass);
+  }
+  [data-tone='retract'] .metric__value .num {
+    color: var(--retract);
+  }
+</style>

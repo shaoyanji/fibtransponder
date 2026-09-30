@@ -1,0 +1,753 @@
+---
+import Demo from '../../layouts/Demo.astro';
+---
+
+<Demo slug="zeck-residual">
+  <div class="stage panel" data-stage>
+    <p class="stage__loading" data-status>Loading the WebAssembly module…</p>
+
+    <div class="stage__body" data-body hidden>
+      <div class="controls">
+        <div class="controls__row">
+          <label class="field field--grow">
+            <span class="label">Input</span>
+            <textarea data-text rows="2" spellcheck="false">The quick brown fox jumps over the lazy dog.</textarea>
+          </label>
+        </div>
+
+        <div class="controls__row">
+          <fieldset class="seg">
+            <legend class="label">Overlay</legend>
+            <div class="seg__group" role="group" aria-label="Reference inputs">
+              <button type="button" data-overlay="none" aria-pressed="true">Just this input</button>
+              <button type="button" data-overlay="canonical" aria-pressed="false">+ canonical Zeckendorf</button>
+              <button type="button" data-overlay="all" aria-pressed="false">+ noise &amp; all-ones</button>
+            </div>
+          </fieldset>
+
+          <label class="field field--narrow">
+            <span class="label">Window (bits)</span>
+            <input type="number" data-window min="8" max="4096" step="8" value="128" />
+          </label>
+        </div>
+      </div>
+
+      <div class="readout">
+        <div class="readout__cell readout__cell--hero">
+          <p class="label">Residual · whole stream</p>
+          <p class="readout__ratio num" data-residual>—</p>
+          <p class="readout__sub" data-residual-note>—</p>
+        </div>
+        <div class="readout__cell">
+          <p class="label">Bit count</p>
+          <p class="readout__big num" data-bitcount>—</p>
+        </div>
+        <div class="readout__cell">
+          <p class="label">Adjacent pairs</p>
+          <p class="readout__big num" data-pairs>—</p>
+        </div>
+        <div class="readout__cell">
+          <p class="label">One density</p>
+          <p class="readout__big num" data-density>—</p>
+        </div>
+      </div>
+
+      <figure class="chart">
+        <figcaption class="label">Residual by window size — mean with min/max envelope</figcaption>
+        <div class="chart__frame" tabindex="0" role="region" aria-label="Chart, scrollable">
+          <canvas data-chart role="img" aria-label="Line chart of Zeckendorf residual against window size" aria-describedby="chart-alt"></canvas>
+        </div>
+        <p id="chart-alt" class="visually-hidden" data-chart-alt></p>
+        <p class="chart__note">
+          A canonical Zeckendorf word has no adjacent ones, so canonical form sits at exactly
+          <strong>0.0</strong> at every scale. Structured text sits in the middle; random data at
+          the ceiling. The spread between min and max at a given scale is the local heterogeneity.
+        </p>
+      </figure>
+
+      <div class="lower">
+        <figure class="hist">
+          <figcaption class="label">Distribution of window residuals</figcaption>
+          <div class="hist__frame" tabindex="0" role="region" aria-label="Histogram, scrollable">
+            <canvas data-hist role="img" aria-label="A histogram of residual values across all windows"></canvas>
+          </div>
+        </figure>
+
+        <section class="scale-table">
+          <p class="label">Per-scale detail</p>
+          <div class="scale-table__scroll" tabindex="0" role="region" aria-label="Per-scale table, scrollable">
+            <table data-table>
+              <caption class="visually-hidden">Mean, minimum, maximum and deviation of the residual at each window size</caption>
+              <thead>
+                <tr>
+                  <th scope="col">window</th>
+                  <th scope="col">mean</th>
+                  <th scope="col">min</th>
+                  <th scope="col">max</th>
+                  <th scope="col">stddev</th>
+                  <th scope="col">windows</th>
+                </tr>
+              </thead>
+              <tbody data-tbody></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <section class="note verified-note">
+      <p>
+        <strong>The definition.</strong> Residual is the density of adjacent 1-bits in a window:
+        <code>adj11 / (n − 1)</code>. The Zeckendorf theorem says every positive integer has a
+        unique representation as a sum of non-consecutive Fibonacci numbers, which in binary means a
+        canonical word has <strong>no adjacent ones</strong> and therefore residual exactly zero.
+      </p>
+    </section>
+
+    <section class="note claim-note">
+      <p>
+        <strong>What it is for.</strong> The repo frames this as a candidate tokenisation
+        criterion: a continuous “surprisal” signal that could replace BPE’s frequency-based
+        merging, since that signal is language-agnostic and needs no vocabulary. It is a
+        measurement substrate for that idea, not a demonstration that it beats BPE — nothing here
+        compares against BPE, and nothing claims it would.
+      </p>
+    </section>
+
+    <section class="note retract-note">
+      <p>
+        <strong>Honest limits.</strong> A high residual can mean disorder, or it can simply mean
+        a stream that is dense in ones — an all-ones stream has residual 1.0, which is a statement
+        about density as much as about structure. That is why one-density is shown next to the
+        residual, so you can tell the two apart.
+      </p>
+    </section>
+  </div>
+</Demo>
+
+<script>
+  import { invoke } from '../../lib/fib';
+  import { debounce, need, needAll, setStatus, token, withAlpha } from '../../lib/ui';
+
+  interface ProfileEntry {
+    windowSize: number;
+    mean: number;
+    min: number;
+    max: number;
+    stddev: number;
+    windows: number;
+    means: number[];
+  }
+
+  interface ZeckOut {
+    bitCount: number;
+    residual: number;
+    adjacencyPairs: number;
+    profile: ProfileEntry[];
+    histogram: number[];
+    histogramMax: number;
+    oneDensity: number;
+    truncated: boolean;
+  }
+
+  type Overlay = 'none' | 'canonical' | 'all';
+
+  /* References, computed here and sent as plain text so the Go side does the
+     same UTF-8 conversion it would for any other input. */
+  const CANONICAL =
+    '1010101010101010101010101010101010101010101010101010101010101010' +
+    '1010101010101010101010101010101010101010101010101010101010101010';
+
+  const NOISE = (() => {
+    let lcg = 12345 >>> 0;
+    let s = '';
+    for (let i = 0; i < 900; i++) {
+      lcg = (Math.imul(lcg, 1664525) + 1013904223) >>> 0;
+      s += String.fromCharCode(32 + (lcg >>> 24) % 95);
+    }
+    return s;
+  })();
+
+  const ALL_ONES = ''.repeat(0) + 'x'.repeat(300).replace(/x/g, 'ÿ');
+
+  const status = need<HTMLElement>('[data-status]');
+  const body = need<HTMLElement>('[data-body]');
+  const textInput = need<HTMLTextAreaElement>('[data-text]');
+  const windowInput = need<HTMLInputElement>('[data-window]');
+  const chartCanvas = need<HTMLCanvasElement>('[data-chart]');
+  const histCanvas = need<HTMLCanvasElement>('[data-hist]');
+  const chartAlt = need<HTMLElement>('[data-chart-alt]');
+  const tbody = need<HTMLTableSectionElement>('[data-tbody]');
+
+  const out = {
+    residual: need<HTMLElement>('[data-residual]'),
+    note: need<HTMLElement>('[data-residual-note]'),
+    bitCount: need<HTMLElement>('[data-bitcount]'),
+    pairs: need<HTMLElement>('[data-pairs]'),
+    density: need<HTMLElement>('[data-density]'),
+  };
+
+  let overlay: Overlay = 'none';
+  let primary: ZeckOut | null = null;
+  let refs: Array<{ label: string; profile: ProfileEntry[] }> = [];
+
+  const LADDER = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
+
+  async function boot(): Promise<void> {
+    try {
+      await invoke('fsvm.meta', {});
+      body.hidden = false;
+      status.hidden = true;
+      await refresh();
+      await refreshRefs();
+      draw();
+    } catch (err) {
+      setStatus(status, (err as Error).message, 'error');
+    }
+  }
+
+  async function refresh(): Promise<void> {
+    try {
+      const { data: d } = await invoke<ZeckOut>('zeck.profile', {
+        text: textInput.value,
+        window: Number(windowInput.value) || 128,
+        sizes: LADDER,
+      });
+      primary = d;
+      out.residual.textContent = d.residual.toFixed(6);
+      out.bitCount.textContent = d.bitCount.toLocaleString('en-US');
+      out.pairs.textContent = d.adjacencyPairs.toLocaleString('en-US');
+      out.density.textContent = d.oneDensity.toFixed(3);
+      out.note.textContent =
+        `${d.adjacencyPairs.toLocaleString('en-US')} adjacent pairs over ` +
+        `${(d.bitCount - 1).toLocaleString('en-US')} gaps` +
+        (d.truncated ? ' · truncated to the bit cap' : '');
+      renderTable();
+    } catch (err) {
+      setStatus(status, (err as Error).message, 'error');
+    }
+  }
+
+  async function refreshRefs(): Promise<void> {
+    const wanted: Array<{ label: string; text: string; bits?: string }> =
+      overlay === 'none'
+        ? []
+        : overlay === 'canonical'
+          ? [{ label: 'canonical (no adjacent ones)', text: CANONICAL }]
+          : [
+              { label: 'canonical (no adjacent ones)', text: CANONICAL },
+              { label: 'pseudo-random text', text: NOISE },
+              { label: 'all-ones bytes', text: ALL_ONES },
+            ];
+
+    refs = [];
+    for (const w of wanted) {
+      try {
+        const { data: d } = await invoke<ZeckOut>('zeck.profile', {
+          text: w.text,
+          window: Number(windowInput.value) || 128,
+          sizes: LADDER,
+        });
+        refs.push({ label: w.label, profile: d.profile });
+      } catch {
+        // Skip a reference that fails rather than losing the others.
+      }
+    }
+  }
+
+  const refreshDebounced = debounce(() => void refresh(), 260);
+
+  function renderTable(): void {
+    if (!primary) return;
+    tbody.replaceChildren(
+      ...primary.profile.map((p) => {
+        const tr = document.createElement('tr');
+        const vals: Array<[string, string]> = [
+          [String(p.windowSize), 'num'],
+          [p.mean.toFixed(4), 'num'],
+          [p.min.toFixed(4), 'num'],
+          [p.max.toFixed(4), 'num'],
+          [p.stddev.toFixed(4), 'num'],
+          [p.windows.toLocaleString('en-US'), 'num'],
+        ];
+        for (const [text, cls] of vals) {
+          const td = document.createElement('td');
+          td.textContent = text;
+          td.className = cls;
+          tr.append(td);
+        }
+        return tr;
+      }),
+    );
+  }
+
+  /* ---- Drawing ---- */
+  function prep(cv: HTMLCanvasElement, w: number, h: number): CanvasRenderingContext2D {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+    cv.style.width = `${w}px`;
+    cv.style.height = `${h}px`;
+    const g = cv.getContext('2d');
+    if (!g) throw new Error('canvas 2d context unavailable');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return g;
+  }
+
+  function seriesColor(i: number, primarySeries: boolean): string {
+    const c = cssToken();
+    if (primarySeries) return c.brass;
+    const palette = [c.verify, c.retract, c.inkMute];
+    return palette[i % palette.length];
+  }
+
+  let cachedCss: { brass: string; verify: string; retract: string; inkMute: string; rule: string; inkDim: string } | null = null;
+  function cssToken() {
+    if (cachedCss) return cachedCss;
+    const s = getComputedStyle(document.documentElement);
+    cachedCss = {
+      brass: s.getPropertyValue('--brass').trim(),
+      verify: s.getPropertyValue('--verify').trim(),
+      retract: s.getPropertyValue('--retract').trim(),
+      inkMute: s.getPropertyValue('--ink-mute').trim(),
+      rule: s.getPropertyValue('--rule').trim(),
+      inkDim: s.getPropertyValue('--ink-dim').trim(),
+    };
+    return cachedCss;
+  }
+
+  function draw(): void {
+    drawChart();
+    drawHist();
+  }
+
+  function drawChart(): void {
+    const host = chartCanvas.parentElement;
+    const w = Math.max((host?.clientWidth ?? 700), 300);
+    const h = 300;
+    const g = prep(chartCanvas, w, h);
+    g.clearRect(0, 0, w, h);
+    const c = cssToken();
+
+    const all = primary ? [primary.profile] : [];
+    for (const r of refs) all.push(r.profile);
+    if (all.length === 0) return;
+
+    // Log x: window sizes span 8 to 4096, five hundredfold.
+    const pad = { l: 46, r: 14, t: 14, b: 40 };
+    const plotW = w - pad.l - pad.r;
+    const plotH = h - pad.t - pad.b;
+    const sizes = [...new Set(all.flatMap((p) => p.map((e) => e.windowSize)))].sort((a, b) => a - b);
+    const x0 = Math.log10(8);
+    const x1 = Math.log10(4096);
+    const sx = (v: number) =>
+      pad.l + ((Math.log10(Math.max(v, 8)) - x0) / (x1 - x0)) * plotW;
+    const sy = (v: number) => pad.t + plotH - v * plotH;
+
+    g.strokeStyle = c.rule;
+    g.lineWidth = 1;
+    g.font = '10px ui-monospace, monospace';
+    for (let v = 0; v <= 1.0001; v += 0.25) {
+      const y = sy(v);
+      g.beginPath();
+      g.moveTo(pad.l, y);
+      g.lineTo(w - pad.r, y);
+      g.stroke();
+      g.fillStyle = c.inkMute;
+      g.textAlign = 'right';
+      g.fillText(v.toFixed(2), pad.l - 6, y + 3);
+    }
+    g.textAlign = 'center';
+    for (const s of sizes) {
+      const x = sx(s);
+      g.beginPath();
+      g.moveTo(x, pad.t);
+      g.lineTo(x, pad.t + plotH);
+      g.stroke();
+      g.fillStyle = c.inkMute;
+      g.fillText(String(s), x, h - pad.b + 14);
+    }
+
+    g.textAlign = 'left';
+    g.fillStyle = c.inkMute;
+    g.fillText('window size (bits)', pad.l, h - 6);
+    g.save();
+    g.translate(11, pad.t + plotH / 2);
+    g.rotate(-Math.PI / 2);
+    g.textAlign = 'center';
+    g.fillText('residual', 0, 0);
+    g.restore();
+
+    // Reference envelopes first, faint, so the primary series reads on top.
+    refs.forEach((ref, ri) => {
+      const colour = seriesColor(ri, false);
+      g.fillStyle = withAlpha(colour, 0.1);
+      g.beginPath();
+      ref.profile.forEach((e, i) => {
+        const x = sx(e.windowSize);
+        if (i === 0) g.moveTo(x, sy(e.max));
+        else g.lineTo(x, sy(e.max));
+      });
+      for (let i = ref.profile.length - 1; i >= 0; i--) {
+        const e = ref.profile[i];
+        g.lineTo(sx(e.windowSize), sy(e.min));
+      }
+      g.closePath();
+      g.fill();
+
+      g.strokeStyle = colour;
+      g.lineWidth = 1.5;
+      g.setLineDash([4, 3]);
+      g.beginPath();
+      ref.profile.forEach((e, i) => {
+        const x = sx(e.windowSize);
+        if (i === 0) g.moveTo(x, sy(e.mean));
+        else g.lineTo(x, sy(e.mean));
+      });
+      g.stroke();
+      g.setLineDash([]);
+    });
+
+    // Primary: envelope filled, mean solid, points marked.
+    if (primary) {
+      g.fillStyle = withAlpha(c.brass, 0.16);
+      g.beginPath();
+      primary.profile.forEach((e, i) => {
+        const x = sx(e.windowSize);
+        if (i === 0) g.moveTo(x, sy(e.max));
+        else g.lineTo(x, sy(e.max));
+      });
+      for (let i = primary.profile.length - 1; i >= 0; i--) {
+        const e = primary.profile[i];
+        g.lineTo(sx(e.windowSize), sy(e.min));
+      }
+      g.closePath();
+      g.fill();
+
+      g.strokeStyle = c.brass;
+      g.lineWidth = 2.5;
+      g.beginPath();
+      primary.profile.forEach((e, i) => {
+        const x = sx(e.windowSize);
+        if (i === 0) g.moveTo(x, sy(e.mean));
+        else g.lineTo(x, sy(e.mean));
+      });
+      g.stroke();
+
+      g.fillStyle = c.brass;
+      for (const e of primary.profile) {
+        g.beginPath();
+        g.arc(sx(e.windowSize), sy(e.mean), 3, 0, Math.PI * 2);
+        g.fill();
+      }
+
+      // Direct-label the canonical series where it sits: exactly zero, which
+      // is the single most important fact on this chart.
+      const canonical = refs.find((r) => r.label.startsWith('canonical'));
+      if (canonical && canonical.profile.length) {
+        const first = canonical.profile[0];
+        g.fillStyle = c.verify;
+        g.font = '10px ui-monospace, monospace';
+        g.textAlign = 'left';
+        g.fillText('canonical = 0.000 at every scale', sx(first.windowSize) + 8, sy(0) - 7);
+      }
+    }
+
+    // Legend.
+    let lx = pad.l + 6;
+    const ly = pad.t + 10;
+    g.font = '10px ui-monospace, monospace';
+    g.textAlign = 'left';
+    const entries: Array<[string, string, boolean]> = [
+      ['your input', c.brass, false],
+      ...refs.map((r, i) => [r.label, seriesColor(i, false), true] as [string, string, boolean]),
+    ];
+    for (const [label, colour, dashed] of entries) {
+      g.strokeStyle = colour;
+      g.lineWidth = 2;
+      if (dashed) g.setLineDash([4, 3]);
+      g.beginPath();
+      g.moveTo(lx, ly - 3);
+      g.lineTo(lx + 16, ly - 3);
+      g.stroke();
+      g.setLineDash([]);
+      g.fillStyle = c.inkDim;
+      g.fillText(label, lx + 21, ly);
+      lx += g.measureText(label).width + 48;
+      if (lx > w - 120) {
+        lx = pad.l + 6;
+        // Second row if the labels wrap.
+        g.translate(0, 13);
+      }
+    }
+
+    chartAlt.textContent =
+      `Line chart of Zeckendorf residual against window size, log scale. ` +
+      (primary
+        ? `Your input: mean residual ${primary.residual.toFixed(4)} over ` +
+          `${primary.bitCount} bits, rising to ${primary.profile.at(-1)?.mean.toFixed(4) ?? '?'} ` +
+          `at window ${primary.profile.at(-1)?.windowSize ?? '?'}.`
+        : '') +
+      (refs.length ? ' Reference inputs are shown as dashed lines.' : '');
+  }
+
+  function drawHist(): void {
+    const host = histCanvas.parentElement;
+    const w = Math.max((host?.clientWidth ?? 320), 220);
+    const h = 190;
+    const g = prep(histCanvas, w, h);
+    g.clearRect(0, 0, w, h);
+    const c = cssToken();
+    if (!primary) return;
+
+    const hist = primary.histogram;
+    const max = Math.max(primary.histogramMax, 1);
+    const pad = { l: 30, b: 24, t: 10 };
+    const plotW = w - pad.l - 10;
+    const plotH = h - pad.b - pad.t;
+    const barW = plotW / hist.length;
+
+    g.strokeStyle = c.rule;
+    g.font = '10px ui-monospace, monospace';
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.t + plotH - (i / 4) * plotH;
+      g.beginPath();
+      g.moveTo(pad.l, y);
+      g.lineTo(w - 10, y);
+      g.stroke();
+      g.fillStyle = c.inkMute;
+      g.textAlign = 'right';
+      g.fillText(String(Math.round((i / 4) * max)), pad.l - 5, y + 3);
+    }
+
+    for (let i = 0; i < hist.length; i++) {
+      const bh = (hist[i] / max) * plotH;
+      const x = pad.l + i * barW;
+      const y = pad.t + plotH - bh;
+      g.fillStyle = withAlpha(c.brass, 0.8);
+      g.fillRect(x + 0.5, y, Math.max(barW - 1, 1), bh);
+    }
+
+    g.fillStyle = c.inkMute;
+    g.textAlign = 'left';
+    g.fillText('0.0', pad.l, h - 8);
+    g.textAlign = 'right';
+    g.fillText('1.0', w - 10, h - 8);
+    g.textAlign = 'center';
+    g.fillText('residual', (pad.l + w) / 2, h - 8);
+  }
+
+  /* ---- Events ---- */
+  for (const btn of needAll<HTMLButtonElement>('[data-overlay]')) {
+    btn.addEventListener('click', async () => {
+      overlay = btn.dataset.overlay as Overlay;
+      for (const b of needAll('[data-overlay]')) b.setAttribute('aria-pressed', String(b === btn));
+      await refreshRefs();
+      draw();
+    });
+  }
+
+  textInput.addEventListener('input', () => {
+    void refresh().then(draw);
+    refreshDebounced();
+  });
+  windowInput.addEventListener('change', async () => {
+    await refresh();
+    await refreshRefs();
+    draw();
+  });
+
+  let raf = 0;
+  window.addEventListener('resize', () => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(draw);
+  });
+
+  // Re-read tokens on a colour-scheme flip, so the canvas follows the theme.
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    cachedCss = null;
+    draw();
+  });
+
+  void boot();
+</script>
+
+<style>
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .stage {
+    padding: 1.5rem 1.6rem 1.6rem;
+  }
+  .stage__loading {
+    color: var(--ink-dim);
+    padding: 2rem 0;
+    text-align: center;
+  }
+  .stage__loading[data-kind='error'] {
+    color: var(--retract-lit);
+    text-align: left;
+    white-space: pre-wrap;
+  }
+
+  .controls__row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+  }
+  .controls__row + .controls__row {
+    margin-top: 1rem;
+  }
+  .seg__group {
+    display: flex;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+  }
+  .seg__group button {
+    padding: 0.45rem 0.8rem;
+    font-size: 0.83rem;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .field--grow {
+    flex: 1 1 22rem;
+  }
+  .field--narrow {
+    flex: 0 0 9rem;
+  }
+
+  .readout {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+    margin: 1.5rem 0;
+  }
+  .readout__cell {
+    background: var(--surface-sunk);
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--sunk-sm);
+    padding: 0.8rem 0.9rem;
+  }
+  .readout__cell--hero {
+    border-color: var(--brass-dim);
+  }
+  .readout__ratio {
+    font-size: 1.85rem;
+    font-weight: 700;
+    line-height: 1.15;
+    margin-top: 0.2rem;
+    color: var(--brass);
+  }
+  .readout__big {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-top: 0.25rem;
+  }
+  .readout__sub {
+    font-size: 0.72rem;
+    color: var(--ink-mute);
+    margin-top: 0.3rem;
+    line-height: 1.5;
+  }
+
+  .chart {
+    margin: 0;
+  }
+  .chart figcaption {
+    margin-bottom: 0.55rem;
+  }
+  .chart__frame {
+    background: var(--surface-sunk);
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--sunk-sm);
+    padding: 0.75rem;
+  }
+  .chart__note {
+    font-size: 0.82rem;
+    color: var(--ink-dim);
+    line-height: 1.6;
+    margin-top: 0.7rem;
+  }
+
+  .lower {
+    display: grid;
+    gap: 1.5rem;
+    margin-top: 1.75rem;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    align-items: start;
+  }
+  @media (max-width: 56rem) {
+    .lower {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .hist figcaption,
+  .scale-table > .label {
+    margin-bottom: 0.55rem;
+    display: block;
+  }
+  .hist__frame {
+    background: var(--surface-sunk);
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--sunk-sm);
+    padding: 0.75rem;
+  }
+
+  .scale-table__scroll {
+    max-height: 15rem;
+    overflow: auto;
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.78rem;
+  }
+  th,
+  td {
+    text-align: right;
+    padding: 0.35rem 0.7rem;
+    border-bottom: var(--rule-w) solid var(--rule);
+    white-space: nowrap;
+  }
+  th {
+    color: var(--ink-mute);
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+  }
+
+  .notes {
+    display: grid;
+    gap: 1rem;
+    margin-top: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+    align-items: start;
+  }
+  .notes .note {
+    font-size: 0.88rem;
+    line-height: 1.6;
+    color: var(--ink-dim);
+  }
+</style>

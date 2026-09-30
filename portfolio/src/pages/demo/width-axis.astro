@@ -1,0 +1,689 @@
+---
+import Demo from '../../layouts/Demo.astro';
+---
+
+<Demo slug="width-axis">
+  <div class="stage panel" data-stage>
+    <p class="stage__loading" data-status>Loading the WebAssembly module…</p>
+
+    <div class="stage__body" data-body hidden>
+      <section class="block">
+        <h2>1 · The published table, recomputed live</h2>
+        <p class="prose">
+          These are the repository's own three corpora — the Fibonacci essay, a Go source file, and
+          a repeating Fibonacci byte pattern — run through the same experiment that
+          <code>REPORT_STRUCTURAL.md</code> publishes. A test in
+          <code>internal/wasmapi</code> diffs the live result against that document's transcription
+          on every build, so if the two ever disagree the build fails.
+        </p>
+
+        <div class="matrix__scroll" tabindex="0" role="region" aria-label="Dilation rate matrix, scrollable">
+          <table data-matrix class="matrix">
+            <caption class="visually-hidden">
+              Dilation rate by adjacency width and input class, live and published
+            </caption>
+            <thead>
+              <tr data-matrix-head></tr>
+            </thead>
+            <tbody data-matrix-body></tbody>
+          </table>
+        </div>
+
+  <p class="table-key">
+    <span><span class="key key--live" aria-hidden="true"></span> live, from this page's WebAssembly run</span>
+    <span><span class="key key--pub" aria-hidden="true"></span> published, transcribed from REPORT_STRUCTURAL.md</span>
+    <span><span class="key key--best" aria-hidden="true"></span> most sensitive class at that width</span>
+  </p>
+
+        <p class="verify-line" data-verify></p>
+      </section>
+
+      <section class="block">
+        <h2>2 · The falsification, running</h2>
+        <p class="prose">
+          Here is the whole claim in one assertion: dilation counts are <strong>non-increasing in
+          width for every possible input</strong>, because widths 1, 2 and 3 test for a 1-run of
+          length at least 2, 3 and 4, so the event sets are nested. Press the button and it runs
+          that assertion over randomised streams.
+        </p>
+
+        <div class="falsify">
+          <div class="falsify__controls">
+            <label class="field field--narrow">
+              <span class="label">Random streams</span>
+              <input type="number" data-streams min="100" max="20000" step="100" value="2000" />
+            </label>
+            <label class="field field--narrow">
+              <span class="label">Seed</span>
+              <input type="number" data-seed value="20240914" />
+            </label>
+            <button type="button" data-run class="btn btn--primary">Run the assertion</button>
+          </div>
+
+          <div class="falsify__result" data-result hidden>
+            <p class="verdict">
+              <span class="verdict__big num" data-violations>—</span>
+              <span class="verdict__label">violations</span>
+            </p>
+            <p class="verdict__note" data-verdict-note></p>
+            <div class="falsify__rates" data-rates></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2>3 · What survives the retraction</h2>
+        <div class="survivors">
+          <article class="survivor">
+            <p class="label">Survives</p>
+            <h3>The sensitivity ranking shifts</h3>
+            <p>
+              Width 1 is most sensitive to prose; widths 2 and 3 are most sensitive to code. That is
+              a real observation. It follows <em>from</em> the nesting rather than being evidence of
+              anything, and it is a consequence worth keeping.
+            </p>
+          </article>
+          <article class="survivor">
+            <p class="label">Survives</p>
+            <h3>Regular input vanishes entirely</h3>
+            <p>
+              The repeating Fibonacci byte pattern never produces three consecutive ones, so its
+              dilation rate is exactly <strong>0.0000</strong> at width 2 and above. A wider window
+              suppresses a regular signal rather than merely being less sensitive to it.
+            </p>
+          </article>
+          <article class="survivor">
+            <p class="label">Survives</p>
+            <h3>Code is about 14× burstier than prose</h3>
+            <p>
+              Windowed dilation variance at width 1: 0.000222 for code against 0.000016 for prose.
+              Code's profile is bursty in time; prose is uniform. This is the substantive finding
+              in the report.
+            </p>
+          </article>
+        </div>
+
+        <p class="prose withdrawn">
+          <strong>Withdrawn.</strong> “The transponder array is a multi-detector sensor, not a
+          multi-fingerprint wrapper.” The three transponders see identical event
+          <em>structure</em>; only their sketch fingerprints differ. There are no orthogonal axes
+          and no 2-dimensional parameter space. And the threshold axis is untested on these corpora
+          — no marker fires in any of the 9 configurations, so no independence conclusion is
+          available from them at all.
+        </p>
+      </section>
+    </div>
+  </div>
+
+  <div class="notes">
+    <section class="note retract-note">
+      <p>
+        <strong>Why this is the page's best artefact.</strong> A wrong claim that gets retracted in
+        public, with the assertion that would catch it coming back, is worth more to a reader than
+        another working demo. The alternative — quietly dropping the claim — would leave no way to
+        tell the difference between a project that was never wrong and one that was wrong and
+        covered it up.
+      </p>
+    </section>
+    <section class="note claim-note">
+      <p>
+        <strong>Also worth noting.</strong> The prose-versus-code shift is partly an encoding
+        artefact: the width-2 and width-3 sensitivity is driven by which ASCII bytes contain long
+        one-runs (<code>|</code>, <code>}</code>, <code>~</code>, <code>&gt;</code> all have runs
+        of 4 to 6), and Go source is dense in exactly those characters.
+      </p>
+    </section>
+  </div>
+</Demo>
+
+<script>
+  import { invoke } from '../../lib/fib';
+  import { need, needAll, setStatus } from '../../lib/ui';
+
+  interface Cell {
+    width: number;
+    dilations: string;
+    dilateRate: number;
+    markers: string;
+    markerRate: number;
+    mostSensitive: boolean;
+  }
+  interface Row {
+    label: string;
+    bitCount: number;
+    oneDensity: number;
+    residual: number;
+    cells: Cell[];
+  }
+  interface CorpusOut {
+    widths: number[];
+    classes: Row[];
+    published: Row[];
+    windowBits: number;
+    note: string;
+    markersAllZero: boolean;
+    corpusBytes: Record<string, number>;
+  }
+  interface NestingOut {
+    streams: number;
+    violations: number;
+    firstFailure?: string;
+    seed: number;
+    widths: number[];
+    strictlyRanked: number;
+    tiedAtTop: number;
+    meanRatePerWidth: number[];
+    note: string;
+  }
+
+  const status = need<HTMLElement>('[data-status]');
+  const body = need<HTMLElement>('[data-body]');
+  const headRow = need<HTMLTableRowElement>('[data-matrix-head]');
+  const tbody = need<HTMLTableSectionElement>('[data-matrix-body]');
+  const verifyLine = need<HTMLElement>('[data-verify]');
+  const streamsInput = need<HTMLInputElement>('[data-streams]');
+  const seedInput = need<HTMLInputElement>('[data-seed]');
+  const runBtn = need<HTMLButtonElement>('[data-run]');
+  const resultBox = need<HTMLElement>('[data-result]');
+  const violationsEl = need<HTMLElement>('[data-violations]');
+  const verdictNote = need<HTMLElement>('[data-verdict-note]');
+  const ratesBox = need<HTMLElement>('[data-rates]');
+
+  async function boot(): Promise<void> {
+    try {
+      await invoke('fsvm.meta', {});
+      body.hidden = false;
+      status.hidden = true;
+      await loadMatrix();
+    } catch (err) {
+      setStatus(status, (err as Error).message, 'error');
+    }
+  }
+
+  async function loadMatrix(): Promise<void> {
+    try {
+      const { data } = await invoke<CorpusOut>('structural.corpus', {});
+      renderMatrix(data);
+    } catch (err) {
+      setStatus(status, (err as Error).message, 'error');
+    }
+  }
+
+  function renderMatrix(d: CorpusOut): void {
+    const classNames = d.classes.map((c) => c.label);
+
+    // Two header rows: the class name spans its two columns, which are the live
+    // run and the published figure. Rendering "w-class prose" twice, or
+    // labelling both columns identically, makes the comparison unreadable --
+    // and the whole point of the table is the comparison.
+    const topRow = el('tr');
+    topRow.append(el('th', { scope: 'col', rowspan: '2', class: 'corner' }, 'width'));
+    for (const name of classNames) {
+      const th = el('th', { scope: 'colgroup', colspan: '2', class: 'grouped' }, name);
+      topRow.append(th);
+    }
+    const subRow = el('tr', { class: 'sub' });
+    for (const _ of classNames) {
+      subRow.append(
+        el('th', { scope: 'col', class: 'subhead' }, 'live'),
+        el('th', { scope: 'col', class: 'subhead subhead--pub' }, 'published'),
+      );
+    }
+    // Swap the placeholder header row out for the two real rows.
+    const thead = headRow.closest('thead');
+    if (thead) {
+      thead.replaceChildren(topRow, subRow);
+    }
+
+    const rows = d.widths.map((w) => {
+      const tr = document.createElement('tr');
+      const cells: HTMLElement[] = [];
+      cells.push(el('td', { class: 'rowhead num' }, `w=${w}`));
+
+      for (const c of d.classes) {
+        const cell = c.cells.find((x) => x.width === w);
+        cells.push(
+          el(
+            'td',
+            {
+              class: `cell num${cell?.mostSensitive ? ' cell--best' : ''}`,
+              'data-rate': cell ? cell.dilateRate.toFixed(4) : '',
+            },
+            cell ? cell.dilateRate.toFixed(4) : '—',
+          ),
+        );
+        const pub = d.published.find((p) => p.label === `${c.label} (published)`);
+        const pv = pub?.cells.find((x) => x.width === w);
+        cells.push(el('td', { class: 'cell cell--pub num' }, pv ? pv.dilateRate.toFixed(4) : '—'));
+      }
+      tr.replaceChildren(...cells);
+      return tr;
+    });
+    tbody.replaceChildren(...rows);
+
+    // Compare live against published, and say so on the page rather than
+    // letting the reader do the subtraction.
+    //
+    // Round the live rate to the report's four decimals *before* comparing.
+    // The synthetic control at width 1 is 384/12288 = 0.03125 exactly, which
+    // is 0.00005 from the published 0.0313 — precisely on the tolerance
+    // boundary, and floating-point error tips it over. Comparing raw rates
+    // against a four-decimal transcription reports a false mismatch there. The
+    // Go test rounds first for the same reason.
+    const round4 = (v: number) => Math.round(v * 10000) / 10000;
+    let mismatches = 0;
+    let compared = 0;
+    const mismatchList: string[] = [];
+    for (const c of d.classes) {
+      const pub = d.published.find((p) => p.label === `${c.label} (published)`);
+      if (!pub) continue;
+      for (const pc of pub.cells) {
+        const live = c.cells.find((x) => x.width === pc.width);
+        if (!live) continue;
+        compared++;
+        if (Math.abs(round4(live.dilateRate) - pc.dilateRate) > 1e-9) {
+          mismatches++;
+          mismatchList.push(`${c.label} w=${pc.width} live ${round4(live.dilateRate).toFixed(4)} vs published ${pc.dilateRate.toFixed(4)}`);
+        }
+      }
+    }
+
+    const bytes = d.classes
+      .map((c) => `${c.label} ${d.corpusBytes[c.label]?.toLocaleString('en-US')} B`)
+      .join(' · ');
+
+    verifyLine.replaceChildren(
+      el('span', { class: 'tag tag-verified' }, mismatches === 0 ? 'Verified' : 'Mismatch'),
+      document.createTextNode(
+        ` ${compared - mismatches} of ${compared} live rates match ` +
+          `REPORT_STRUCTURAL.md to four decimals. Corpus: ${bytes}.`,
+      ),
+      el('span', { class: 'verify-line__extra' },
+        d.markersAllZero
+          ? ' No marker fired in any of the 9 configurations, which is why the threshold axis is untested rather than proven independent.'
+          : ' At least one marker fired, so the second-axis retraction would no longer hold.'),
+    );
+    if (mismatchList.length) {
+      verifyLine.append(el('span', { class: 'verify-line__extra verify-line__extra--bad' }, mismatchList.join(' · ')));
+    }
+    verifyLine.dataset.kind = mismatches === 0 ? 'ok' : 'error';
+  }
+
+  function el<K extends keyof HTMLElementTagNameMap>(
+    tag: K,
+    attrs: Record<string, string> = {},
+    ...children: Array<Node | string>
+  ): HTMLElementTagNameMap[K] {
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    for (const c of children) node.append(c);
+    return node;
+  }
+
+  /* ---- The live falsification ---- */
+  runBtn.addEventListener('click', async () => {
+    runBtn.disabled = true;
+    runBtn.textContent = 'Running…';
+    try {
+      const { data } = await invoke<NestingOut>('structural.nesting', {
+        streams: Number(streamsInput.value) || 2000,
+        seed: Number(seedInput.value) || 20240914,
+      });
+
+      resultBox.hidden = false;
+      violationsEl.textContent = String(data.violations);
+      resultBox.dataset.kind = data.violations === 0 ? 'ok' : 'error';
+
+      const tiedPct = data.streams ? (data.tiedAtTop / data.streams) * 100 : 0;
+      verdictNote.textContent =
+        data.violations === 0
+          ? `Held on all ${data.streams.toLocaleString('en-US')} randomised streams. ` +
+            `Mean dilation rate fell from ${data.meanRatePerWidth[0]?.toFixed(4)} at width 1 to ` +
+            `${data.meanRatePerWidth.at(-1)?.toFixed(4)} at width ${data.widths.at(-1)}, as nesting forces. ` +
+            `${tiedPct.toFixed(0)}% of streams tied at the top, which is exactly the artefact that made ` +
+            `the original report read as "not strictly monotonic".`
+          : `${data.violations.toLocaleString('en-US')} streams violated the invariant, first at index ` +
+            `${data.firstFailure}. If this number is ever above zero, the claim on this page is wrong.`;
+
+      ratesBox.replaceChildren(
+        ...data.widths.map((w, i) => {
+          const div = document.createElement('div');
+          div.className = 'rate';
+          div.append(
+            el('span', { class: 'rate__w num' }, `w=${w}`),
+            el('span', { class: 'rate__v num' }, data.meanRatePerWidth[i].toFixed(4)),
+          );
+          return div;
+        }),
+      );
+    } catch (err) {
+      setStatus(status, (err as Error).message, 'error');
+    } finally {
+      runBtn.disabled = false;
+      runBtn.textContent = 'Run the assertion';
+    }
+  });
+
+  void boot();
+</script>
+
+<style>
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .stage {
+    padding: 1.6rem 1.75rem 1.75rem;
+  }
+  .stage__loading {
+    color: var(--ink-dim);
+    padding: 2rem 0;
+    text-align: center;
+  }
+  .stage__loading[data-kind='error'] {
+    color: var(--retract-lit);
+    text-align: left;
+    white-space: pre-wrap;
+  }
+  .stage__body[data-kind='error'] {
+    border-left: 3px solid var(--retract);
+    padding-left: 1rem;
+  }
+
+  .block + .block {
+    margin-top: 2.75rem;
+    padding-top: 2.25rem;
+    border-top: var(--rule-w) solid var(--rule);
+  }
+
+  h2 {
+    font-size: 1.3rem;
+    margin-bottom: 0.7rem;
+  }
+
+  .prose {
+    color: var(--ink-dim);
+    font-size: 0.93rem;
+    line-height: 1.65;
+    max-width: var(--measure);
+    margin-bottom: 1.25rem;
+  }
+  .prose.withdrawn {
+    margin-top: 1.5rem;
+    padding: 1rem 1.2rem;
+    border-left: 3px solid var(--retract);
+    background: var(--retract-wash);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  }
+
+  /* ---- Matrix ---- */
+  .matrix__scroll {
+    overflow-x: auto;
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+    background: var(--surface-sunk);
+    box-shadow: var(--sunk-sm);
+  }
+  .matrix {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.84rem;
+  }
+  .matrix th,
+  .matrix td {
+    padding: 0.55rem 0.85rem;
+    text-align: right;
+    border-bottom: var(--rule-w) solid var(--rule);
+    white-space: nowrap;
+  }
+  .matrix thead th {
+    color: var(--ink-dim);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 600;
+    position: sticky;
+    background: var(--surface);
+  }
+  /* Row 1: the class name, spanning its live/published pair. */
+  .matrix thead tr:first-child th {
+    top: 0;
+    padding-block: 0.5rem 0.35rem;
+    border-bottom: 0;
+  }
+  .matrix thead tr:first-child .corner {
+    text-align: left;
+    left: 0;
+    z-index: 2;
+  }
+  .matrix thead .grouped {
+    text-align: center;
+    color: var(--brass);
+    letter-spacing: 0.12em;
+    border-bottom: var(--rule-w) solid var(--rule);
+  }
+  /* Row 2: which column is which. */
+  .matrix thead tr.sub th {
+    top: 1.75rem;
+    padding-block: 0.3rem 0.5rem;
+    font-size: 0.6rem;
+    color: var(--ink-mute);
+  }
+  .matrix thead .subhead--pub {
+    color: var(--ink-mute);
+  }
+  .matrix tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  .rowhead {
+    color: var(--brass-lit);
+    font-weight: 700;
+    text-align: left;
+  }
+  /* The published column is a transcription, so it recedes. The live column is
+     the measurement and reads at full strength, which is what makes the
+     comparison legible at a glance rather than by reading every pair. */
+  .cell {
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .cell--pub {
+    color: var(--ink-mute);
+    font-weight: 400;
+  }
+  /* The most-sensitive cell per class is marked three ways: colour, weight, and
+     a ring. Colour alone would fail WCAG 1.4.1. */
+  .cell--best {
+    color: var(--verify-lit);
+    font-weight: 700;
+    box-shadow: inset 0 0 0 2px var(--verify);
+    border-radius: var(--radius-xs);
+  }
+  .cell--best::after {
+    content: ' ◂';
+    font-size: 0.7em;
+    vertical-align: 0.15em;
+  }
+
+  /* Legend for the table, so the three column styles are named rather than
+     left to be inferred. */
+  .table-key {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.4rem;
+    margin-top: 0.7rem;
+    font-size: 0.74rem;
+    color: var(--ink-mute);
+  }
+  .table-key > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .key {
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .key--live {
+    background: var(--ink);
+  }
+  .key--pub {
+    background: var(--ink-mute);
+  }
+  .key--best {
+    background: var(--surface-sunk);
+    box-shadow: inset 0 0 0 2px var(--verify);
+  }
+
+  .verify-line {
+    margin-top: 1rem;
+    font-size: 0.83rem;
+    color: var(--ink-dim);
+    line-height: 1.6;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem 0.6rem;
+  }
+  .verify-line__extra {
+    display: block;
+    flex-basis: 100%;
+    color: var(--ink-mute);
+    font-size: 0.78rem;
+  }
+  .verify-line__extra--bad {
+    color: var(--retract-lit);
+  }
+
+  /* ---- Falsify ---- */
+  .falsify__controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .field--narrow {
+    flex: 0 0 9rem;
+  }
+  .btn--primary {
+    color: var(--brass-lit);
+    border-color: var(--brass-dim);
+  }
+
+  .falsify__result {
+    margin-top: 1.5rem;
+    padding: 1.4rem 1.5rem;
+    background: var(--surface-sunk);
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--sunk-sm);
+  }
+  .falsify__result[data-kind='ok'] {
+    border-color: color-mix(in oklab, var(--verify) 50%, var(--rule));
+  }
+  .falsify__result[data-kind='error'] {
+    border-color: var(--retract);
+  }
+
+  .verdict {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+  }
+  .verdict__big {
+    font-size: 2.6rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--verify);
+  }
+  .falsify__result[data-kind='error'] .verdict__big {
+    color: var(--retract);
+  }
+  .verdict__label {
+    font-size: 0.8rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+  .verdict__note {
+    font-size: 0.88rem;
+    color: var(--ink-dim);
+    line-height: 1.6;
+    margin-top: 0.9rem;
+  }
+
+  .falsify__rates {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-top: 1.1rem;
+  }
+  .rate {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.5rem 0.85rem;
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+  }
+  .rate__w {
+    font-size: 0.68rem;
+    color: var(--ink-mute);
+  }
+  .rate__v {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--brass);
+  }
+
+  /* ---- Survivors ---- */
+  .survivors {
+    display: grid;
+    gap: 1.15rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  }
+  .survivor {
+    padding: 1.15rem 1.3rem;
+    background: var(--surface);
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--verify);
+  }
+  .survivor h3 {
+    font-size: 0.98rem;
+    margin: 0.4rem 0 0.5rem;
+  }
+  .survivor p:last-child {
+    font-size: 0.86rem;
+    color: var(--ink-dim);
+    line-height: 1.55;
+  }
+
+  .notes {
+    display: grid;
+    gap: 1rem;
+    margin-top: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+    align-items: start;
+  }
+  .notes .note {
+    font-size: 0.88rem;
+    line-height: 1.6;
+    color: var(--ink-dim);
+  }
+</style>

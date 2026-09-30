@@ -1,0 +1,137 @@
+# Build the portfolio site and deploy it to GitHub Pages.
+#
+# Kept separate from ci.yml on purpose. The Go tests in ci.yml are the
+# correctness gate and must stay fast and dependency-free. This workflow adds
+# the js/wasm build, the Astro build, and the deploy, so a Pages failure never
+# blocks or is blocked by a Go test failure.
+#
+# The ordering matters: the Go tests must pass before the wasm is built, because
+# internal/wasmapi's golden values are what the site renders. If a change to
+# internal/ made the site disagree with the repository, the tests fail here
+# before anything is published.
+
+name: Pages
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'internal/**'
+      - 'cmd/fibwasm/**'
+      - 'portfolio/**'
+      - 'Makefile'
+      - '.github/workflows/pages.yml'
+  pull_request:
+    paths:
+      - 'internal/**'
+      - 'cmd/fibwasm/**'
+      - 'portfolio/**'
+      - 'Makefile'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+# Only one deployment at a time; cancel superseded runs rather than racing them.
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  GO_VERSION: '1.25.7'
+  NODE_VERSION: '22'
+
+jobs:
+  build:
+    name: Build wasm and site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: portfolio/package-lock.json
+
+      # The correctness gate. Everything below depends on these passing.
+      - name: Verify the shim's golden values
+        run: go test ./internal/wasmapi/ ./internal/transponder/ ./internal/fsvm/ -count=1
+
+      - name: Build the WebAssembly module
+        run: make wasm
+
+      # A silently-empty artifact is the most likely way this workflow breaks, so
+      # check the thing actually exists and is a plausible size.
+      - name: Check the artifact
+        run: |
+          set -euo pipefail
+          BIN=portfolio/public/wasm/fibtransponder.wasm
+          test -s "$BIN" || { echo "::error::wasm artifact is missing or empty"; exit 1; }
+          size=$(stat -c%s "$BIN")
+          echo "wasm artifact: $size bytes"
+          if [ "$size" -lt 500000 ]; then
+            echo "::error::wasm artifact is implausibly small ($size bytes); the build probably stripped too much"
+            exit 1
+          fi
+          test -s portfolio/public/wasm/wasm_exec.js \
+            || { echo "::error::wasm_exec.js was not vendored from GOROOT"; exit 1; }
+          # Confirm the module is valid wasm: magic number \0asm.
+          magic=$(head -c4 "$BIN" | od -An -tx1 | tr -d ' \n')
+          if [ "$magic" != "0061736d" ]; then
+            echo "::error::artifact does not start with the wasm magic number (got $magic)"
+            exit 1
+          fi
+
+      - name: Install site dependencies
+        working-directory: portfolio
+        run: npm ci
+
+      - name: Build the site
+        working-directory: portfolio
+        run: npm run build
+
+      - name: Check the built site
+        run: |
+          set -euo pipefail
+          test -d portfolio/dist || { echo "::error::no dist directory"; exit 1; }
+          # Every page must exist, or a link in the header is a 404.
+          for p in index demos retractions method \
+                   demo/fsvm-stepper demo/hilbert-codec demo/dilation-tree \
+                   demo/zeck-residual demo/width-axis demo/sketch-entropy; do
+            test -f "portfolio/dist/$p/index.html" \
+              || { echo "::error::missing page: $p"; exit 1; }
+          done
+          # The wasm must have been copied into the build output.
+          test -s portfolio/dist/wasm/fibtransponder.wasm \
+            || { echo "::error::wasm missing from dist"; exit 1; }
+          echo "built $(find portfolio/dist -name '*.html' | wc -l) pages"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: portfolio/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
