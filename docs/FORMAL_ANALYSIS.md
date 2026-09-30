@@ -7,7 +7,7 @@
 
 ### Proof
 
-The `Step` function (internal/fsvm/fsvm.go:64-95) performs exactly:
+The `Step` function (internal/fsvm/fsvm.go, `func Step`) performs exactly:
 
 1. `b &= 1` — one AND operation
 2. Zero-run update: one increment + one comparison + one branch
@@ -16,7 +16,7 @@ The `Step` function (internal/fsvm/fsvm.go:64-95) performs exactly:
 4. Adjacency check: one comparison (`s.LastBit == 1 && b == 1`)
 5. Dilation update: two increments (R, Dilations) on branch taken
 6. Window update: one shift, one OR, one AND (mask 0x3F)
-7. Zobrist fold: one XOR, one ADD, two memory reads (Seeds[b], s.W)
+7. Zobrist fold: one XOR, one ADD, one MUL, two memory reads (Seeds[b], s.W)
 8. Return: fixed-size struct copy
 
 **Total operations:** ≤ 20 primitive operations, independent of:
@@ -33,7 +33,8 @@ The `Step` function (internal/fsvm/fsvm.go:64-95) performs exactly:
 
 ### Corollary: Amortized cost equals worst-case cost
 Since every step is O(1) (not amortized O(1) with occasional expensive operations),
-the amortized cost equals the worst-case cost: 44-48 ns/op on Pentium N4200.
+the amortized cost equals the worst-case cost: ≈30 ns/op measured on AMD EPYC 7763
+(`go test ./internal/fsvm -bench BenchmarkStep -count=3`).
 
 ---
 
@@ -47,18 +48,26 @@ stream length or content.
 
 The State struct contains:
 
-| Field      | Type     | Size (bytes) | Bounded by |
-|------------|----------|-------------|------------|
-| Seeds      | [2]uint64| 16          | constant   |
-| Sketch     | uint64   | 8           | constant   |
-| ZeroRun    | uint64   | 8           | constant   |
-| Dilations  | uint64   | 8           | constant   |
-| Markers    | uint64   | 8           | constant   |
-| R          | uint32   | 4           | constant   |
-| W          | uint8    | 1           | constant   |
-| LastBit    | uint8    | 1           | constant   |
+| Field          | Type      | Size (bytes) | Bounded by |
+|----------------|-----------|--------------|------------|
+| Seeds          | [2]uint64 | 16           | constant   |
+| MixA           | uint64    | 8            | constant   |
+| MixB           | uint64    | 8            | constant   |
+| MixR           | uint8     | 1            | constant   |
+| Sketch         | uint64    | 8            | constant   |
+| SketchDelta    | uint8     | 1            | constant   |
+| ZeroRun        | uint64    | 8            | constant   |
+| Dilations      | uint64    | 8            | constant   |
+| Markers        | uint64    | 8            | constant   |
+| BitsProcessed  | uint64    | 8            | constant   |
+| R              | uint32    | 4            | constant   |
+| W              | uint8     | 1            | constant   |
+| LastBit        | uint8     | 1            | constant   |
+| Width          | uint8     | 1            | constant   |
 
-**Total: 54 bytes** (padded to 56 by Go's alignment rules).
+**Total: 96 bytes**, verified by `unsafe.Sizeof` in `TestStateSize`.
+An earlier revision listed only 8 of these 14 fields and reported 54/56 bytes;
+v1 and v2 share one State type, so both are 96.
 
 This is independent of:
 - Number of bits processed
@@ -84,19 +93,30 @@ The event slice does not grow beyond 2 elements per call.
 
 ## 3. Zero Heap Allocation
 
-### Theorem
-`Step` performs zero heap allocations on every call path.
+### Theorem (narrowed)
+`Step` performs zero *counted* heap allocations per call on the benchmark
+patterns (`0 allocs/op`), but not zero *bytes*: the returned event slice
+escapes, so each emitted event costs one 16-byte allocation. Reported cost is
+therefore a fractional ~3 B/op on mixed input.
 
-### Evidence (Go benchmark)
+### Evidence (Go benchmark, AMD EPYC 7763, Go 1.25)
 
 ```
-BenchmarkStep-4    44.95 ns/op    0 B/op    0 allocs/op
+BenchmarkStep-4      30.30 ns/op    3 B/op    0 allocs/op
+BenchmarkStep-4      29.87 ns/op    3 B/op    0 allocs/op
+BenchmarkStep-4      29.94 ns/op    3 B/op    0 allocs/op
+BenchmarkStepV2-4    34.81 ns/op    3 B/op    0 allocs/op
 ```
+
+The 3 B/op figure is exactly one 16-byte `Event` amortized over the benchmark
+pattern (the pattern emits ~1 event per 5 bits). An earlier revision claimed
+`0 B/op` and attributed the event allocation to a compiler stack-allocation
+optimization; Go does not apply that optimization to a returned slice.
 
 ### Why the compiler can prove this
 
-1. **Value receiver:** `State` is passed by value (56 bytes, fits in registers
-   or stack). No pointer escape.
+1. **Value receiver:** `State` is passed by value (96 bytes; it no longer fits
+   a small register set, so it is passed on the stack). No pointer escape.
 
 2. **Bounded append:** `evs` starts as `var evs []Event` (nil slice).
    The first `append` for ≤ 2 elements allocates from the stack-local
@@ -170,13 +190,23 @@ necessary stuffings) is deferred to the paper.
 ### The fold
 
 ```
-s.Sketch ^= s.Seeds[b] + uint64(s.W)
+s.Sketch ^= fsvm.SketchTerm(s.Seeds, b, s.W)
+// = s.Seeds[b] + uint64(s.W) * 0x9E3779B97F4A7C15
 ```
 
-This is a **rolling XOR-add fold** where:
+This is a **rolling XOR-add-mul fold** where:
 - `Seeds[b]` provides input-dependent variation (bit value)
-- `s.W` provides context-dependent variation (6-bit window)
+- `s.W * 0x9E3779B97F4A7C15` provides context-dependent variation (6-bit window
+  spread across the full 64-bit word)
 - `^=` accumulates across the entire stream
+
+**Why the multiplier is required.** `s.W` is 0..63. Adding it directly to a
+seed perturbs only the low bits, leaving the upper 56 bits a function of the
+bit counts alone, so the "64-bit" sketch admits at most 4 x 256 = 1024 distinct
+values. Measured on 20000 random streams, the un-multiplied fold yielded only
+256 distinct sketches and collided after 18 streams. Multiplying by an odd
+constant raises this to ~19713 distinct with the first collision near stream
+350.
 
 ### Properties
 
@@ -194,15 +224,19 @@ This is a **rolling XOR-add fold** where:
    W depends on bit ordering. Therefore the sketch is
    order-sensitive despite using XOR.
 
-4. **Collision bound:** With a 64-bit sketch, collision probability
-   is 2^{-64} for independently-seeded transponders processing
-   different inputs. For same-input different-calibration (structural
-   array), collisions are possible and observed (tight/wide on prose
-   in REPORT_CORPUS.md).
+4. **No collision bound (retracted).** An earlier revision claimed a
+   `2^{-64}` collision probability. That figure does not hold for this
+   construction and is withdrawn. The fold is a parity function over a
+   128-symbol alphabet, so the effective output space is far smaller than
+   2^64. Measured: ~1.5% of random streams of length 1..200 collide, with
+   the first collision near stream 350 (`TestSketchCollisionRate`). The
+   old witness for this claim (tight/wide colliding on prose) was an
+   artefact of the un-spread window term and no longer reproduces.
 
-5. **Not a universal hash:** The fold does not satisfy the universal
-   hashing property because the ADD introduces linear dependencies.
-   It is a practical state fingerprint, not a cryptographic commitment.
+5. **Not a universal hash:** The fold does not satisfy the universal hashing
+   property; it is XOR accumulation over a small symbol alphabet and is
+   parity-limited on degenerate input. It is a practical state fingerprint,
+   not a cryptographic commitment and not a class identifier.
 
 ### What the sketch provides
 
@@ -227,9 +261,12 @@ This is a **rolling XOR-add fold** where:
 
 ### Problem with v1
 
-The v1 sketch `s.Sketch ^= s.Seeds[b] + uint64(s.W)` has two weaknesses:
-1. **Linear dependence on W:** the ADD term creates predictable relationships
-   between consecutive sketches.
+The v1 sketch has two weaknesses:
+1. **Parity-limited accumulation:** the fold is pure XOR over a 128-symbol
+   alphabet (2 bit values x 64 window states), so a stream is summarized by a
+   parity vector. On a degenerate all-zero stream (window pinned at 0) only 2
+   distinct sketches occur across all lengths, and ~1.5% of random streams of
+   length 1..200 collide.
 2. **No per-transponder identity:** all transponders share the same fold shape;
    only the seed table differs, which does not change event structure.
 
@@ -247,7 +284,7 @@ MixR: rotation amount
 The v2 sketch update:
 ```
 s.Sketch = mixSketch(s.Sketch, s.MixA, s.MixB, s.MixR)
-s.Sketch ^= s.Seeds[b] + uint64(s.W)
+s.Sketch ^= fsvm.SketchTerm(s.Seeds, b, s.W)
 s.Sketch ^= foldZeroRun(s.ZeroRun)
 s.Sketch ^= uint64(s.R) << 32
 for each event: s.Sketch ^= eventSalt(event)
@@ -265,28 +302,44 @@ in the input sketch produces, in expectation, a 32-bit change in the output.
   all higher output bits via carries.
 - Addition of `b` perturbs the lower bits.
 - Rotation by `r` redistributes high-bit influence back to low positions.
-- For any odd `a`, the map `x → x*a + b (mod 2^64)` is a bijection on
+- For any **odd** `a`, the map `x → x*a + b (mod 2^64)` is a bijection on
   `Z/2^64Z`. Composing with rotation preserves bijectivity.
 - The composition is therefore a permutation with no fixed subspaces,
   ensuring avalanche. ∎
 
+**The oddness precondition is load-bearing and was previously violated.**
+`HashFamilies[5].A` was `0x78a5636f43172f60`, which is even; for an even
+multiplier `x*a mod 2^64` depends only on `x mod 2^63`, the map is 2-to-1, and
+bit 63 is destroyed on every step. The constant is now
+`0x2545f4914f6cdd1d`. `TestHashFamiliesWellFormed` now asserts oddness, nonzero
+`A`/`R`, and >= 6-bit rotation spacing for every family;
+`TestMixSketchIsBijective` sweeps 2^16 inputs per family and fails on any
+collision. The earlier `TestMixSketchAvalanche` only exercised family 0.
+
 ### Collision reduction
 
-**Empirical result:** Running the corpus experiment (prose/code/synthetic)
-with v1 produced sketch collisions (tight ⊕ wide = 0 on prose). With v2 and
-independent families, cross-transponder sketch collisions drop to zero on
-all tested corpora. The avalanche mixer breaks the linear correlations that
-caused v1 collisions.
+**Retracted.** An earlier revision claimed v2 drops cross-transponder sketch
+collisions to zero, and cited the v1 witness "tight ⊕ wide = 0 on prose". Both
+halves are stale: that v1 collision was an artefact of the un-spread window
+term, and after fixing the v1 fold all three corpus classes show full 64-bit
+XOR divergence with no collision (see `REPORT_CORPUS.md` section 3).
+
+No v2-vs-v1 comparison has been run on the corpus harness at all -- `StepV2`
+is not exercised by `internal/transponder`. The claim that v2 reduces
+collisions is unevidenced and is withdrawn pending an actual experiment.
 
 ### Per-family uniqueness
 
 Each of the 8 `HashFamilies` uses a distinct `(A, B, R)` triple with:
-- `A` drawn from distinct bit-patterns (golden ratio, Knuth, etc.)
-- `R` spaced at ≥ 6 bit positions apart
+- `A` odd and drawn from distinct bit-patterns (golden ratio, Knuth, etc.)
+- `R` spaced at >= 6 bit positions apart (7, 13, 19, 25, 31, 37, 43, 49)
 
-**Verification:** All 8 families produce distinct permutations on a
-representative test set of 10^6 random inputs. No two families share
-a collision pattern.
+**Verification (corrected):** `TestMixSketchIsBijective` sweeps 2^16 inputs
+per family and asserts injectivity; `TestHashFamiliesWellFormed` asserts the
+structural invariants. An earlier revision claimed verification "on a
+representative test set of 10^6 random inputs"; no such test existed anywhere
+in the repo, and the old rotation set (7,13,17,23,31,37,41,47) actually
+violated its own >= 6 spacing twice (deltas of 4).
 
 ---
 
@@ -433,25 +486,47 @@ and
 - At fixed threshold, width changes class rankings
 - The two effects are not redundant
 
-### Proven (from second-axis experiment)
+### Withdrawn (previously "Proven from second-axis experiment")
 
-At fixed width w ∈ {1, 2, 3}:
-- pow2≥8 ranks: prose+zeros > code+zeros > mixed
-- pow3≥9 ranks: code+zeros > prose+zeros > mixed
-- lin4 ranks: mixed > code+zeros > prose+zeros
+The ranking table above was read as establishing that threshold is independent
+of width. It does not, for two reasons.
 
-These are different orderings → threshold is independent of width.
+**1. Width is a nested threshold, not a free axis.** `Width1/2/3`
+(`internal/transponder/threshold.go:96-110`) test for 1-runs of length >= 2/3/4.
+The event sets are nested:
 
-### Implication for array design
+```
+{run >= 4}  ⊆  {run >= 3}  ⊆  {run >= 2}
+```
 
-A transponder array with calibration (width, threshold) spans a
-2-dimensional parameter space. Each (w, t) pair defines a unique
-detector with a unique sensitivity profile. The array is a basis set,
-not a 1-parameter family.
+so dilation counts are non-increasing in width for every possible input.
+`TestStructuralCalibration` asserts this over 2000 randomized streams (zero
+violations). The class-ranking shift at w=1 vs w=2/w=3 is a consequence of the
+nesting. Width is one scalar read at three ordered thresholds, so there is no
+gain-vs-selectivity trade-off to be independent *of*.
 
-**Open question:** Whether a third axis (e.g., window width W) adds
-further independence or is redundant with the existing two axes.
-This is future work.
+**2. The threshold axis is untested on these corpora.** Marker counts are zero
+across all 9 (width, threshold) configurations and all 3 classes. The ranking
+table above therefore rests on counts of 4, 5 and 9 markers in total -- three
+document-level classes, one document each. `TestSecondAxisCalibration` now
+asserts the zero-marker precondition, so a future corpus that does produce
+markers will fail loudly instead of silently re-entering the dead analysis.
+
+Separately, `StepFull`'s dilation branch never reads `thresh`, so dilation rate
+is *identically* invariant across thresholds at fixed width. That is a property
+of the code, not a measurement, and was previously reported as a confirmed
+experimental result.
+
+### Revised statement for array design
+
+An array parameterized by (width, threshold) spans a 2-dimensional *parameter*
+space, but the width dimension is a nested threshold on one latent variable
+(1-run length) and the threshold dimension currently produces no measurable
+effect. Each (w, t) pair does give a distinct event-rate profile, but the
+array is not established as a basis of independent detectors.
+
+**Open question:** whether any calibration parameter can be made genuinely
+independent of 1-run length. This is future work and is unclaimed.
 
 ---
 
@@ -459,29 +534,35 @@ This is future work.
 
 | Component | Time | Space | Allocs |
 |-----------|------|-------|--------|
-| FSVM Step | O(1), 44-48ns | O(1), 56 bytes | 0 |
-| StepWidth | O(1), ~same | O(1), 56 bytes | 0 |
-| StepFull | O(1), ~same | O(1), 56 bytes | 0 |
-| StepV2 | O(1), ~61ns | O(1), 64 bytes | 0 |
-| StepWord64V2 (mixed) | O(1), ~32ns/bit | O(1), 64 bytes | 0 |
-| BitRope Append | O(1), 14.78ns | O(n) amortized | 0 |
-| Array Step (k transponders) | O(k) | O(k × 64) | O(k) for Result slice |
-| Classifier | O(1), 55ns | O(1) | 0 |
+| FSVM Step | O(1), ~30ns | O(1), 96 bytes | 0 counted (~3 B/op amortized) |
+| StepWidth | O(1), ~same | O(1), 96 bytes | 0 counted (~3 B/op amortized) |
+| StepFull | O(1), ~same | O(1), 96 bytes | 0 counted (~3 B/op amortized) |
+| StepV2 | O(1), ~35ns | O(1), 96 bytes | 0 counted (~3 B/op amortized) |
+| BitRope Append | O(1), ~15ns | O(n) amortized | 0 |
+| Array Step (k transponders) | O(k) | O(k × 96) | O(k) for Result slice |
 | Descriptor Extract | O(1), ~820ns | O(1), 64-byte window | 0 |
 | Descriptor Distance | O(1), ~15ns | O(1) | 0 |
-| FeatureBuffer Match (n=1000) | O(n), ~200ns | O(n × 56) | 0 |
-| Proprioceptive calibration | O(1), ~53ns | O(1), 48 bytes | 0 |
+| FeatureBuffer Match (n=1000) | O(n), ~200ns | O(n × 96) | 0 |
+| session.ProcessBits (4096 bits) | ~12ms total (~2.8us/bit) | O(n) | ~100k allocs per 4096 bits |
+| Rosetta isFibonacci (per marker) | O(log 94), ~13ns | O(1) | 0 |
 
-**Key insight:** The per-transponder cost is O(1) and allocation-free.
-Array-level cost is O(k) where k = number of transponders, with one
-allocation per step for the Result slice. For k ≤ 10 (typical array),
-total cost is < 500ns per input bit.
+**Key insight:** The core per-transponder step is O(1) and performs no
+*counted* allocations; it does allocate bytes for the returned event slice.
+Array-level cost is O(k) in the number of transponders, with one allocation
+per step for the Result slice.
 
-Rich features add ~820ns per extraction event, but events are sparse
-(dilations + markers ≪ bits processed). Amortized overhead is < 1% for
-typical streams.
+**Scope warning.** The last two rows describe the shipped ingest path, not
+the core. `session.ProcessBits` drives seven display extensions and is ~100x
+slower per bit than `fsvm.Step`; it now defers all display rendering to an
+explicit `RefreshOutputs()` call. The `isFibonacci` marker probe is a binary
+search over 94 precomputed values and no longer scales with the zero-run
+length (an earlier O(sqrt(x)) implementation stalled ingest for ~60ms on a
+2^25-bit zero run).
 
 ---
 
-*Generated: 2026-04-23*
-*Benchmarks from: Intel Celeron N3010 @ 1.04GHz, Go 1.25+*
+*Generated: 2026-04-23 · table revised after the v1 sketch fold fix*
+*Benchmarks re-measured on AMD EPYC 7763, Go 1.25. An earlier revision cited
+two different CPUs (Pentium N4200 in the body, Celeron N3010 in the footer)
+without attributing individual figures to either; those numbers have been
+removed rather than reconciled.*

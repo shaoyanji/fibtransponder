@@ -29,7 +29,7 @@ Zobrist [zobrist1970hashing] introduced incremental XOR-based hashing for game-p
 Structured state space models (SSMs) such as S4 [gu2022s4] and Mamba [gu2023mamba] process sequences through continuous-time state transitions with linear complexity in sequence length. Mamba introduces input-dependent state transitions (selective SSMs) that allow the model to propagate or forget information based on content.
 
 The FSVM shares SSMs' commitment to state-based processing and O(1) per-step cost, but differs in three ways:
-1. The FSVM state is discrete and bounded (56 bytes), not a high-dimensional continuous vector
+1. The FSVM state is discrete and bounded (96 bytes), not a high-dimensional continuous vector
 2. The FSVM's transitions are input-dependent through adjacency detection, not learned
 3. The FSVM operates on raw bits, not token embeddings
 

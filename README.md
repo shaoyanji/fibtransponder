@@ -11,24 +11,25 @@
 
 - The FSVM is the contribution.
 - Seed-only calibration is falsified.
-- Structural calibration via adjacency width is demonstrated.
-- Width selects locality sensitivity.
-- Threshold is a planned second axis, not yet a proven result.
+- Adjacency width is an **ordered threshold**, not an independent detector axis.
+- Threshold is a planned second axis, **untested** — no markers fire on current corpora.
 
 ## What this repo currently proves
 
-- A deterministic FSVM can ingest a bitstream with bounded per-step work while tracking dilation, zero-run markers, and a cheap state sketch. See `docs/SPEC.md` and `docs/BENCHMARKS.md`.
+- A deterministic FSVM can ingest a bitstream with bounded per-step work while tracking dilation, zero-run markers, and a state sketch. See `docs/SPEC.md` and `docs/BENCHMARKS.md`.
 - Seed-only calibration does not create detector diversity. Different Zobrist seed tables change sketch identity, but not event structure. See `REPORT_CORPUS.md`.
-- Structural calibration is real when geometry changes. Varying adjacency width changes class sensitivity ranking, including a prose-first to code-first shift across widths. See `REPORT_STRUCTURAL.md`.
-- Adjacency width already acts as a locality-sensitivity selector. Width is the demonstrated control axis in this release.
+- Varying adjacency width changes the class sensitivity ranking (a prose-first to code-first shift). See `REPORT_STRUCTURAL.md`.
+- The v1 sketch now uses its full 64-bit range. An earlier revision added the 6-bit window directly to the seed, which left the upper 56 bits a function of bit counts alone: 20000 random streams produced only 256 distinct sketches, colliding after 18 streams. `fsvm.SketchTerm` now spreads the window with an odd multiplier, giving ~19713 distinct.
 
 ## What is not claimed
 
-- This release does not claim threshold-based structural calibration. Threshold is next work, not current evidence.
+- **Width is not an independent axis.** `Width1/2/3` test 1-runs of length >= 2/3/4, so the event sets are nested and dilation counts are non-increasing in width for *every* input. This is asserted on 2000 randomized streams by `TestStructuralCalibration`. No "orthogonal axes", "multi-detector sensor", or "2-dimensional parameter space" claim is made. The earlier version of this README and of `REPORT_STRUCTURAL.md` did make one; both are withdrawn.
+- **Threshold calibration is untested, not merely unproven.** Marker counts are zero across all 9 (width, threshold) configurations on all three corpora, so no independence conclusion can be drawn. `TestSecondAxisCalibration` asserts this precondition.
+- **The sketch has no collision guarantee.** It is a parity function over a 128-symbol alphabet, so ~1.5% of random streams of length 1..200 collide and an all-zero stream yields only 2 distinct sketches at any length. The former "2^-64 collision probability" figure was wrong and is withdrawn. See `docs/SPEC.md` §7 "Not claimed".
+- `classify_results.json` is generated output, is not tracked, and must not be cited: it has no train/test split, its `n_transponders` field is never assigned, and `cmd/classify` imports no fibtransponder package. See the header of `cmd/classify/main.go`.
 - This release does not claim tokenizer replacement, transformer replacement, or agent superiority.
 - This release does not claim that the current sketch is a sufficient semantic identity mechanism on its own.
 - This release does not claim broad convergence or proprioceptive control results beyond what is directly documented in this repo.
-- `v0.1.1` introduces no new science; science-facing work is deferred to `0.2.0`.
 
 ## Reading order
 

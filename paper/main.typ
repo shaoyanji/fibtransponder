@@ -3,7 +3,7 @@
 #show: ieee.with(
   title: [Proprioceptive State Machines: Fibonacci-Radix Streaming Computation with Structural Calibration],
   abstract: [
-    We present the Fibonacci-radix Streaming Virtual Machine (FSVM), a deterministic state machine that processes boolean streams at O(1) per bit with zero heap allocation. The FSVM detects adjacency violations in Zeckendorf-coherent representations, emitting dilation events that retrospectively rescale semantic indices without rewriting data. We demonstrate that structural calibration---varying geometric parameters such as adjacency width and marker threshold---produces independent sensitivity profiles across differently-calibrated FSVM instances, forming a detector basis set rather than a one-parameter family. Experiments demonstrate that a 3#sym.times 3 array of FSVMs with distinct (width, threshold) configurations produces different class orderings on boolean streams derived from natural language, source code, and synthetic patterns. At ≈76 ns per input bit on commodity hardware, the FSVM operates two to three orders of magnitude faster than learned tokenization pipelines while requiring no vocabulary, no training data, and no language-specific preprocessing.
+    We present the Fibonacci-radix Streaming Virtual Machine (FSVM), a deterministic state machine that processes boolean streams at O(1) per bit with bounded heap allocation. The FSVM detects adjacency violations in Zeckendorf-coherent representations, emitting dilation events that retrospectively rescale semantic indices without rewriting data. We report measurements on how calibration parameters---adjacency width and marker threshold---affect sensitivity profiles across differently-calibrated FSVM instances. Experiments on boolean streams derived from natural language, source code, and synthetic patterns show that a 3#sym.times 3 array of FSVMs with distinct (width, threshold) configurations produces different event orderings. We report these results without claiming an independent multi-axis basis: the width axis is a nested threshold on bit-run length rather than a free parameter, and the threshold axis is untested on the corpora used here because no markers fire. At ≈30 ns per input bit for the core state machine on commodity hardware, the FSVM operates orders of magnitude faster than learned tokenization pipelines while requiring no vocabulary, no training data, and no language-specific preprocessing.
   ],
   authors: (
     (
@@ -28,9 +28,9 @@ We propose a different approach: analog sensing via streaming state machines. In
 
 Our contributions are:
 
-- The *FSVM*: a Fibonacci-radix streaming state machine with O(1) per-bit complexity, zero heap allocation, and built-in Zeckendorf error correction. Benchmarked at ≈76 ns/op on commodity hardware.
+- The *FSVM*: a Fibonacci-radix streaming state machine with O(1) per-bit complexity and bounded heap allocation, with built-in Zeckendorf error correction. Benchmarked at ≈30 ns/op for the core state machine on commodity hardware.
 
-- *Structural calibration*: the demonstration that varying geometric parameters (adjacency width, marker threshold) produces independent sensitivity profiles, not just rescaled copies of a single detector. Width selects locality sensitivity; threshold selects event admission sensitivity.
+- *Structural calibration*: measurements of how varying a geometric parameter (adjacency width) changes event rates and class orderings. Width is an ordered threshold on bit-run length; it shifts which class dominates but is not an independent axis. The marker threshold axis remains untested on current corpora.
 
 - *The transponder array*: an architecture in which differently-calibrated FSVMs process the same bitstream in parallel, producing a multi-dimensional structural signal that replaces discrete tokenization.
 
@@ -47,7 +47,7 @@ The FSVM is a deterministic streaming state machine operating on an unbounded bo
 - $"sketch" in {0, 1}^64$: a Zobrist state fingerprint (XOR-folded)
 - $"Seeds" = (s_0, s_1)$: a per-instance pair of 64-bit Zobrist constants
 
-The state occupies 56 bytes. It does not grow with stream length.
+The state occupies 96 bytes. It does not grow with stream length.
 
 == Step Function
 
@@ -59,7 +59,9 @@ On each input bit $b in {0, 1}$, the FSVM performs exactly:
 
 3. *Window update*: $W <- ((W << 1) | b) mod 64$
 
-4. *Zobrist fold*: $"sketch" <- "sketch" xor "Seeds"[b] + W$
+4. *Zobrist fold*: $"sketch" <- "sketch" xor ("Seeds"[b] + W dot 0x9E3779B97F4A7C15)$
+
+The multiplier on the window term is load-bearing. $W$ takes only 64 values, so adding it directly to a seed perturbs just the low bits and leaves the upper 56 bits a function of the bit counts alone; a nominal 64-bit sketch then admits at most $4 times 256 = 1024$ distinct values. Multiplying by an odd constant spreads each window value across the full word.
 
 Each operation is a fixed sequence of comparisons, arithmetic, and bitwise operations. No loops, no recursion, no dynamic dispatch. The total operation count is bounded by 20 primitive operations per input bit, establishing O(1) worst-case complexity.
 
@@ -77,7 +79,9 @@ This connects to Zeckendorf's theorem @zeckendorf1972representation, independent
 
 The sketch provides a 64-bit state fingerprint updated by one XOR per input bit. It inherits its mechanism from Zobrist hashing @zobrist1970hashing, originally developed for incremental board-position hashing in game-playing programs, and from the broader class of rolling and incremental hash functions @karp1987fingerprinting that maintain a running fingerprint over streaming input.
 
-The FSVM's fold differs from classical Zobrist hashing in two ways: (1) the seed table has only two entries (one per bit value) rather than one per board position, and (2) the window state $W$ is folded in via addition, breaking XOR commutativity and making the sketch order-sensitive despite using XOR accumulation.
+The FSVM's fold differs from classical Zobrist hashing in two ways: (1) the seed table has only two entries (one per bit value) rather than one per board position, and (2) the window state $W$ is folded in via addition of a spread multiple, breaking XOR commutativity and making the sketch order-sensitive despite using XOR accumulation.
+
+The fold is not a universal hash and carries no cryptographic collision guarantee. Because accumulation is pure XOR over a 128-symbol alphabet (2 bit values #sym.times 64 window states), the sketch is parity-limited on degenerate input: an all-zero stream leaves $W$ pinned at zero and yields only two distinct sketches across all lengths. Empirically, roughly 1.5% of random streams of length 1--200 collide. The sketch should be read as a coherence fingerprint, not an identifier.
 
 The sketch provides: (a) cheap divergence detection between transponders processing the same input, (b) convergence detection when the sketch stabilizes across windows, and (c) state identity fingerprinting. It does not provide class identification or semantic encoding---those belong in the analytical layer.
 
@@ -88,16 +92,17 @@ The sketch provides: (a) cheap divergence detection between transponders process
     columns: 4,
     align: (left, right, right, right),
     table.header([Component], [Time], [Space], [Allocs]),
-    [FSVM Step], [≈76 ns], [56 B], [0],
-    [StepWidth], [$tilde.eq$ same], [56 B], [0],
-    [BitRope Append], [≈21 ns], [O(n) amort.], [0],
-    [Classifier], [≈93 ns], [O(1)], [0],
-    [Array Step ($k$ transponders)], [O($k$)], [O($k$#sym.times 56)], [O($k$)],
+    [FSVM Step], [≈30 ns], [96 B], [0],
+    [StepV2], [≈35 ns], [96 B], [0],
+    [BitRope Append], [≈15 ns], [O(n) amort.], [0],
+    [Array Step ($k$ transponders)], [O($k$)], [O($k$#sym.times 96)], [O($k$)],
   ),
-  caption: [Benchmarked on Intel Celeron N3010 / Pentium N4200. All components show 0 heap allocations per call.],
+  caption: [Measured on AMD EPYC 7763, Go 1.25, `-benchmem -count=3`. The reported byte figure is a fractional average over the event allocations: `Step` reports 0 allocs/op but ~3 B/op amortized, because up to one 16-byte `Event` is allocated per emitted event and divided across the bits in the benchmark pattern.],
 ) <tab:benchmarks>
 
-The FSVM's O(1) complexity is worst-case, not amortized. No input pattern triggers expensive fallback behavior. The zero-allocation property holds because: (1) the State is passed by value (56 bytes, fits in registers), (2) the event slice uses append with bounded growth (at most 2 events per step), and (3) no interfaces, closures, or channels are involved.
+The FSVM's O(1) complexity is worst-case, not amortized. No input pattern triggers expensive fallback behavior. The bounded-allocation property holds because: (1) the State is passed by value (96 bytes), (2) the event slice uses append with bounded growth (at most 2 events per step), and (3) no interfaces, closures, or channels are involved in the core path.
+
+#text(red)[*Scope.*] These figures describe the core state machine only. The higher-level `session.ProcessBits` ingest path, which drives seven display extensions, is roughly two orders of magnitude slower per bit and allocates per bit; it now defers display rendering to an explicit `RefreshOutputs()` call. Benchmark the component you actually use.
 
 = Structural Calibration
 
@@ -150,15 +155,35 @@ The original corpora produce zero markers because they lack long zero runs. We e
   caption: [Marker rate per (threshold #sym.times class) at $w=1$. Different thresholds produce different class orderings. This holds at all three widths.],
 ) <tab:threshold-sensitivity>
 
-At every fixed width, different threshold families produce different class orderings. The marker rate is identical across widths at fixed threshold (threshold and width are orthogonal). This establishes the marker threshold as an independent second structural axis.
+At every fixed width, different threshold families produce different class orderings.
 
-== Independence Theorem
+== Independence Claim (withdrawn)
 
-Two structural parameters $A$ and $B$ are *independent* if, at fixed $A$, varying $B$ produces different class orderings, and vice versa. Formally, for a corpus $C = {c_1, ..., c_k}$:
+#text(red)[*Withdrawn.*] The previous version of this section asserted an
+"Independence Theorem": that width and threshold are orthogonal structural
+axes spanning a 2-dimensional parameter space. That claim does not survive
+closer analysis and has been removed.
 
-$ forall a in "values"(A): "rank"_B (c_1, ..., c_k) "varies with" B $
+Two reasons:
 
-The width-axis experiment shows that varying width at fixed threshold changes class rankings (prose-first vs code-first). The threshold-axis experiment shows that varying threshold at fixed width changes class rankings (prose-first vs code-first vs mixed-first). Both conditions hold. Width and threshold are independent structural axes.
+1. *Width is a nested threshold, not a free axis.* The widths test for 1-runs
+   of length $>= 2, 3, 4$ respectively, so the event sets are nested
+   ($arrow.r$ for runs of length $>= 4$ $subset$ runs $>= 3$ $subset$ runs $>= 2$).
+   Dilation counts are non-increasing in width for _every_ input, by
+   construction; `TestStructuralCalibration` verifies this on 2000 randomized
+   streams. The class-ranking shift at $w=1$ vs $w=2/w=3$ is a consequence of
+   that nesting, not evidence of independent detectors.
+
+2. *The threshold axis is untested on these corpora.* Marker counts are zero
+   across all nine (width, threshold) configurations on all three classes, so
+   no independence conclusion can be drawn from marker orderings.
+   `TestSecondAxisCalibration` asserts this precondition explicitly.
+
+What remains supported: at fixed width, different threshold families do produce
+different class orderings on the observed marker counts, and the width axis
+shifts which class dominates the dilation rate. Neither observation establishes
+orthogonality.
+
 
 = The Transponder Array
 
@@ -188,7 +213,7 @@ This is analogous to a ball rolling to the bottom of a bowl---the system does no
 
 *Streaming algorithms.* The FSVM's O(1) per-step processing connects to the streaming algorithms literature established by Alon et al.'s AMS sketch @alon1996ams, the Count-Min Sketch @cormode2005countmin, and the Count Sketch @charikar2002countsketch, surveyed by Muthukrishnan @muthukrishnan2005streams. These randomized data structures approximate aggregate statistics over streams with bounded memory. The FSVM shares the commitment to bounded work per symbol but is deterministic and tracks structural properties rather than frequency statistics.
 
-*State space models.* Structured state space models @gu2022s4 @gu2023mamba achieve linear-time sequence processing through continuous-time state transitions with learned parameters. RWKV @peng2023rwkv combines RNN efficiency with transformer-scale parallel training, and Hyena @poli2023hyena replaces attention with learned long convolutions at subquadratic cost. The FSVM shares the state-based paradigm but operates on raw bits with discrete, bounded state (56 bytes) and geometry-defined (not learned) transitions.
+*State space models.* Structured state space models @gu2022s4 @gu2023mamba achieve linear-time sequence processing through continuous-time state transitions with learned parameters. RWKV @peng2023rwkv combines RNN efficiency with transformer-scale parallel training, and Hyena @poli2023hyena replaces attention with learned long convolutions at subquadratic cost. The FSVM shares the state-based paradigm but operates on raw bits with discrete, bounded state (96 bytes) and geometry-defined (not learned) transitions.
 
 *Biological signal processing.* The transponder array draws on cochlear frequency analysis @bekesy1960experiments, where frequency decomposition emerges from sensor geometry rather than discrete frequency bins. The auditory scene analysis framework of Bregman @bregman1990auditory provides the theoretical grounding for streaming-based source segregation. The scattering transform @bruna2013scattering applies a similar principle to visual signals, constructing translation-invariant representations through cascaded wavelet decompositions without learned parameters.
 
@@ -198,7 +223,7 @@ The FSVM is proven on boolean streams. Its application to natural language proce
 
 The transponder array's calibration parameters (adjacency width, marker threshold) are currently hand-set, not learned. The second-axis experiment uses expanded corpora with artificial zero padding; validation on real-world streaming data remains future work.
 
-The Zobrist sketch is not a universal hash---the ADD component introduces linear dependencies. It serves as a practical state fingerprint, not a cryptographic commitment. Sketch collisions between classes are possible and observed.
+The Zobrist sketch is not a universal hash. Accumulation is pure XOR over a 128-symbol alphabet (2 bit values times 64 window states), which makes the sketch parity-limited: an all-zero stream leaves the window pinned at zero and admits only two distinct sketches across all lengths, and roughly 1.5% of random streams of length 1--200 collide. It serves as a practical state fingerprint for coherence and divergence, not a cryptographic commitment or a class identifier.
 
 The proprioceptive feedback loop (measuring DILATE rate, adjusting sensor geometry, observing signal change) is described but not implemented. Convergence guarantees for the feedback loop are empirical, not proven.
 
@@ -206,9 +231,9 @@ The analog tokenization hypothesis — that structurally calibrated FSVM arrays 
 
 = Conclusion
 
-We have presented the FSVM, a Fibonacci-radix streaming state machine that processes boolean streams at O(1) per bit with zero allocation. We demonstrated that structural calibration---varying geometric parameters rather than hash seeds---produces independent detector sensitivities, establishing a two-dimensional basis set for analog signal sensing.
+We have presented the FSVM, a Fibonacci-radix streaming state machine that processes boolean streams at O(1) per bit with bounded allocation. We measured how structural calibration---varying geometric parameters rather than hash seeds---changes event rates and class orderings. We explicitly do not claim an independent detector basis: the width axis is a nested threshold on bit-run length, and the marker threshold axis is untested on the corpora used here. An earlier draft asserted orthogonality between the two axes; that claim is withdrawn (see the Independence Claim section).
 
-The FSVM operates at ≈76 ns per input bit on commodity hardware, two to three orders of magnitude faster than learned tokenization pipelines. It requires no vocabulary, no training data, and no language-specific preprocessing. The transponder array architecture replaces discrete tokenization with geometric sensing, drawing on the biological principle of cochlear frequency decomposition.
+The FSVM core operates at ≈30 ns per input bit on commodity hardware (AMD EPYC 7763), orders of magnitude faster than learned tokenization pipelines. It requires no vocabulary, no training data, and no language-specific preprocessing. The transponder array is motivated by the biological principle of cochlear frequency decomposition, though as shown above its current calibration axes are ordered thresholds rather than independent resonances.
 
 The path forward involves testing the array on larger corpora, implementing the proprioceptive feedback loop, and exploring task formulations where bit-level temporal dynamics provide signal that byte-frequency statistics cannot. Whether the analog tokenization hypothesis holds at scale remains an open question---but the computational primitive and the calibration mechanism are now established.
 

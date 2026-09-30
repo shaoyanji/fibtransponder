@@ -21,7 +21,7 @@
 
 **The FSVM IS the contribution. Everything else is optional infrastructure.**
 
-The FSVM at 46.55 ns/op on a Pentium N4200 is a Fibonacci-radix streaming state machine with built-in error correction (Zeckendorf), retrospective dilation (semantic rescaling without data rewrite), and zero-allocation async signal emission. That's the invariant. That's what the paper is about.
+The FSVM at ~30 ns/op (AMD EPYC 7763) is a Fibonacci-radix streaming state machine with built-in error correction (Zeckendorf), retrospective dilation (semantic rescaling without data rewrite), and zero-allocation async signal emission. That's the invariant. That's what the paper is about.
 
 If a change makes the FSVM slower, more complex, or less autonomous — it's wrong, no matter how canonical the spec looks.
 
@@ -69,7 +69,7 @@ The delta queue moved Zobrist sketching into the classifier (sidecar). This crea
 FSVM.Step() → CoreDelta → Classify() → Zobrist fold → DerivedDelta
 ```
 
-Result: 46.55ns (FSVM) + 50-99ns (classifier) = **2-3x overhead for a sketch that should cost one XOR.**
+Result: ~30ns (FSVM) + 50-99ns (classifier) = **2-3x overhead for a sketch that should cost one XOR.**
 
 ### The fix: Zobrist in the core
 
@@ -237,7 +237,7 @@ Or shorter: **"The Language Ear: Analog Tokenization via Fibtransponder Arrays"*
 
 ### Core claims
 
-1. A Fibonacci-radix streaming state machine (FSVM) achieves O(1) per-bit processing with built-in error correction via Zeckendorf coherency, at 46.55ns/op on commodity hardware.
+1. A Fibonacci-radix streaming state machine (FSVM) achieves O(1) per-bit processing with built-in error correction via Zeckendorf coherency, at ~30ns/op on commodity hardware.
 
 2. Retrospective dilation enables semantic rescaling without data rewrite — the machine can adjust its interpretation of past data based on current signal, like biological proprioception.
 
@@ -251,7 +251,7 @@ Or shorter: **"The Language Ear: Analog Tokenization via Fibtransponder Arrays"*
 
 | Metric | Value | Notes |
 |---|---|---|
-| FSVM step | 46.55 ns/op | 0 allocs, Pentium N4200 |
+| FSVM step | ~30 ns/op | 0 counted allocs (~3 B/op amortized), AMD EPYC 7763 |
 | BitRope append | 14.78 ns/op | 0 allocs, storage substrate |
 | Target (Zobrist-in-core) | ~48 ns/op | FSVM + one XOR |
 | Classifier (sidecar) | 50-99 ns/op | Current, should be ~10-15ns after fix |
@@ -381,7 +381,8 @@ The authoritative reading: **seeds label trajectories; geometry changes sensitiv
 | Date | Experiment | Result | Status |
 |---|---|---|---|
 | 2026-03-14 | Zobrist-in-core relocation | FSVM 44-48ns, classifier sketch read 0.65ns | ✅ Accepted |
-| 2026-03-14 | Seed-only calibration (3 transponders, 3 corpus classes) | Identical event structures, sketch collisions | ❌ Falsified |
+| 2026-09-30 | v1 fold spread fix + structural falsification | v1 sketch entropy recovered (256 -> ~19713 distinct / 20k streams); widths shown to be nested thresholds, not an independent axis | ❌ Prior "demonstrated" claim withdrawn |
+| 2026-03-14 | Seed-only calibration (3 transponders, 3 corpus classes) | Identical event structures, sketch collisions | ❌ Falsified (the cited collisions were a fold defect; event-structure result stands) |
 | 2026-03-14 | Structural calibration (adjacency width w=1/w=2/w=3) | w=1→prose, w=2→code sensitivity | ✅ Demonstrated |
 
 ---

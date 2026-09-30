@@ -33,47 +33,57 @@
 
 ## 3. Sketch Divergence (XOR distance between transponders)
 
+> **Regenerated after the v1 sketch fold fix.** The previous values here were
+> small (`0x70`, `0x0c`, `0x0000000000000000`) because the fold added the
+> 6-bit window directly to the seed, leaving the upper 56 bits a function of
+> bit counts alone. `fsvm.SketchTerm` now multiplies the window by an odd
+> constant, so divergence spans the full word. Regenerate with
+> `go test ./internal/transponder/ -run TestCorpusExperiment -v`.
+
 ### Prose
 | pair | XOR distance |
 |---|---|
-| tight ⊕ medium | `0x0000000000000070` |
-| tight ⊕ wide | `0x0000000000000000` ← COLLISION |
-| medium ⊕ wide | `0x0000000000000070` |
+| tight ⊕ medium | `0x4c60a182e1161c58` |
+| tight ⊕ wide | `0x92620ec81e65b6e0` |
+| medium ⊕ wide | `0xde02af4aff73aab8` |
 
 ### Code
 | pair | XOR distance |
 |---|---|
-| tight ⊕ medium | `0xf86d58a8debb0ccd` |
-| tight ⊕ wide | `0x636c7ab49db92bd1` |
-| medium ⊕ wide | `0x9b01221c4302271c` |
+| tight ⊕ medium | `0x164b7926dde70c15` |
+| tight ⊕ wide | `0x0056bd77a458f839` |
+| medium ⊕ wide | `0x161dc45179bff42c` |
 
 ### Synthetic
 | pair | XOR distance |
 |---|---|
-| tight ⊕ medium | `0x000000000000000c` |
-| tight ⊕ wide | `0x0000000000000008` |
-| medium ⊕ wide | `0x0000000000000004` |
+| tight ⊕ medium | `0x110171dadf04000c` |
+| tight ⊕ wide | `0x10386f5a0f247608` |
+| medium ⊕ wide | `0x01391e80d0207604` |
+
+No pair collides on any class. Note this is still **not** a collision guarantee
+— see `docs/SPEC.md` §7 "Not claimed".
 
 ## 4. Sketch Trajectory (window snapshots)
 
 ### Prose (2 windows)
 ```
-W0: tight=0xcf4bb80e586876dd  medium=0x3726e0a686d37a8c  wide=0xac27c2bac5d15d5c
-W1: tight=0x0000000000000078  medium=0x0000000000000008  wide=0x0000000000000078
+W0: tight=0x071ebdeb16fc9b91  medium=0x8c81c6e6d729dfb8  wide=0x0c99b86f6350b5a8
+W1: tight=0x30a61f5e1c2092d8  medium=0x7cc6bedcfd368e80  wide=0xa2c4119602452438
 ```
 
 ### Code (3 windows)
 ```
-W0: tight=0x0000000000000000  medium=0x00000000000000d8  wide=0x00000000000003e0
-W1: tight=0xcf4bb80e586876e7  medium=0x3726e0a686d37a72  wide=0xac27c2bac5d15d36
-W2: tight=0xcf4bb80e5868768f  medium=0x3726e0a686d37a42  wide=0xac27c2bac5d15d5e
+W0: tight=0xa3feaa3dd87821f8  medium=0x2b5f6824e418cdd0  wide=0x90b332de2b8f63f8
+W1: tight=0xf5be25e7c6bdf263  medium=0xb14a4c29f33e6bbe  wide=0x889897e26d3a4f1a
+W2: tight=0xe34801a7cdcb7083  medium=0xf5037881102c7c96  wide=0xe31ebcd0699388ba
 ```
 
 ### Synthetic (3 windows)
 ```
-W0: tight=0x000000000000002e  medium=0x0000000000000022  wide=0x0000000000000026
-W1: tight=0x000000000000002e  medium=0x0000000000000022  wide=0x0000000000000026  ← identical
-W2: tight=0x000000000000002e  medium=0x0000000000000022  wide=0x0000000000000026  ← identical
+W0: tight=0x9c805cbf37f6fba6  medium=0x8d812d65e8f2fbaa  wide=0x8cb833e538d28dae
+W1: tight=0x9c805cbf37f6fba6  medium=0x8d812d65e8f2fbaa  wide=0x8cb833e538d28dae  ← identical
+W2: tight=0x9c805cbf37f6fba6  medium=0x8d812d65e8f2fbaa  wide=0x8cb833e538d28dae  ← identical
 ```
 
 ## 5. Proven
@@ -82,7 +92,7 @@ W2: tight=0x000000000000002e  medium=0x0000000000000022  wide=0x0000000000000026
 
 2. **Calibration does not affect event structure.** All three transponders produced identical DILATE and marker counts within each class. The adjacency detector is a physical property of the input stream, not a property of the Zobrist seeds.
 
-3. **Sketch identity is calibration-dependent but input-sensitive.** For code, all three sketches diverged fully (64-bit XOR distances). For prose and synthetic, sketch divergence was minimal (lower-bits only) or zero.
+3. **Sketch identity is calibration-dependent and input-sensitive.** All three transponders diverge on all three classes, with full 64-bit XOR distances. (After the fold fix; previously prose/synthetic diverged in the low bits only, or collided.)
 
 4. **Repeating input produces stable sketches.** The synthetic pattern produced identical sketches across all windows — the sketch converges to a fixed point when the input is periodic.
 
@@ -90,9 +100,9 @@ W2: tight=0x000000000000002e  medium=0x0000000000000022  wide=0x0000000000000026
 
 1. **Calibration does not produce different structural readings.** The transponder array's three calibrations see identical event structures. They produce different sketch fingerprints, but those fingerprints are not more informative than the raw event counts.
 
-2. **Sketch collision is possible.** Tight and wide produced identical final sketches (`0x78`) on prose input. The sketch alone cannot serve as a reliable class identifier.
+2. **The sketch is not a reliable unique class identifier.** Collisions no longer occur on these three corpora, but the fold is parity-limited: `TestSketchCollisionRate` observes roughly 1.5% collisions across 20000 random streams of length 1..200. Identical inputs may still share a sketch, and an all-zero stream yields only 2 distinct sketches at any length. Treat the sketch as a coherence fingerprint, not an identity.
 
-3. **The sketch adds information beyond event rate.** For synthetic input, all sketches converged to constant values. For prose, sketch XOR distances were near-zero. The sketch appears to be a noisy encoding of the same information that DILATE rate already captures.
+3. **The sketch adds information beyond event rate.** Partially supported for code, where sketches differ across windows; unsupported for synthetic, where the periodic input pins the sketch to one value per transponder. No test asserts that the sketch carries information the event rates do not already contain.
 
 ## 7. Does the Array Sense Structure?
 

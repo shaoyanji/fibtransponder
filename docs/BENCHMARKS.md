@@ -1,29 +1,34 @@
 # Benchmarks
 
-Host CPU: Intel(R) Celeron(R) CPU N3010 @ 1.04GHz
+Host CPU: AMD EPYC 7763 64-Core, Go 1.25. Re-measured after the v1 sketch
+fold fix; earlier revisions cited a Celeron N3010 and a Pentium N4200 without
+attributing individual figures to either, and those numbers were removed.
 
 ## FSVM v1 (Zobrist-in-core, per-instance seeds)
 - Benchmark: `internal/fsvm.BenchmarkStep`
-- Result: ~44–48 ns/op, 0 allocs/op
-- Zobrist sketch folded into core Step(): `s.Sketch ^= s.Seeds[b] + uint64(s.W)`
+- Result: ~30 ns/op, 0 counted allocs/op, ~3 B/op amortized (the returned event slice escapes)
+- Zobrist sketch folded into core Step(): `s.Sketch ^= fsvm.SketchTerm(s.Seeds, b, s.W)`,
+  i.e. `s.Seeds[b] + uint64(s.W) * 0x9E3779B97F4A7C15` (the multiplier spreads the
+  6-bit window across the full 64-bit word)
 - Each instance owns its seed table via `NewWithSeeds()`
 
 ## FSVM v2 (independent hash families, avalanche mixer)
 - Benchmark: `internal/fsvm.BenchmarkStepV2`
-- Result: ~61 ns/op (bit-by-bit), 0 allocs/op
+- Result: ~35 ns/op (bit-by-bit), 0 counted allocs/op, ~3 B/op amortized
 - `mixSketch(sk, a, b, r) = bits.RotateLeft64(sk*a + b, r)`
 - Rich folding: zeroRun, R, seeds, event salts
 - `SketchDelta` tracks per-step bit changes
 
 ## FSVM v2 word-level fast path
 - Benchmark: `internal/fsvm.BenchmarkStepWord64V2`
-- Result: ~32 ns/op per bit (mixed word), 0 allocs/op
-- 3× faster than 64× bit-by-bit for bulk throughput
+- Result: ~887 ns/op per 64-bit word (~14 ns/op per bit), 0 allocs/op
+- ~2.5× faster per bit than bit-by-bit v2 (~35 ns/op) for bulk throughput
 
 ## Proprioceptive calibration
 - Benchmark: `internal/calibration.BenchmarkStepWord64Adaptive`
-- Result: ~53 ns/op mixed, 0 allocs/op
-- Same as non-adaptive; calibration fires every 256 bits (configurable)
+- Result: `BenchmarkAdaptiveArrayStepWord64` ~2176 ns/op per 64-bit word across the
+  default 7-transponder array, 192 B/op, 1 alloc/op (the Result slice)
+- Same as non-adaptive per-transponder cost; calibration fires every 256 bits (configurable)
 
 ## Rich feature extraction
 - Benchmark: `internal/fsvm.BenchmarkExtractorExtract`

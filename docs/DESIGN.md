@@ -35,9 +35,12 @@ avalanche mixer:
 - Rich state folding: `zeroRun`, `R`, seeds, per-event salts
 - `SketchDelta` = `popcount(oldSketch ^ newSketch)` (rolling drift tracker)
 
-Design consequence: sketch collisions drop to zero on tested corpora;
-per-transponder identity is structural (different mixers) not just
-cosmetic (different seeds).
+Design consequence: per-transponder identity is structural (different
+mixers) rather than merely cosmetic (different seeds), provided every family
+multiplier `A` is **odd** -- an even `A` makes the mixer 2-to-1 and destroys
+bit 63. Asserted by `TestHashFamiliesWellFormed`. No collision-rate guarantee
+is claimed: the underlying v1 fold is parity-limited over a 128-symbol alphabet
+(see `docs/SPEC.md` section 7, "Not claimed").
 
 ## 2b) Proprioceptive loop design
 
@@ -80,7 +83,7 @@ Use append-only immutable block strategy (`bitrope`-style substrate):
 - linear growth in observed input size
 - no full-stream rewrites on dilation events
 - stable references for downstream probes
-- FSVM state is 56-64 bytes (v1/v2), constant regardless of stream length
+- FSVM state is 96 bytes (v1 and v2 share one State type), constant regardless of stream length
 
 ## 5) Segmentation layer (optional interpretation)
 
