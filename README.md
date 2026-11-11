@@ -1,6 +1,6 @@
 # fibtransponder
 
-![fibtransponder: a spiral-wound antenna broadcasting Fibonacci rings](banner.png)
+![fibtransponder: a spiral-wound antenna broadcasting Fibonacci rings](https://res.cloudinary.com/de1eajx01/image/upload/f_auto,q_auto,w_1200/assets/repos/fibtransponder)
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev/)
 [![Status](https://img.shields.io/badge/status-v0.1.1%20public%20surface%20sync-blue)](#status)
