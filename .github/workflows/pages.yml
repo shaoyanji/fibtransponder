@@ -106,8 +106,12 @@ jobs:
         run: |
           set -euo pipefail
           test -d portfolio/dist || { echo "::error::no dist directory"; exit 1; }
-          # Every page must exist, or a link in the header is a 404.
-          for p in index demos retractions method \
+          # Every page must exist, or a link in the header is a 404. The root is
+          # dist/index.html; the other routes carry a directory because Astro
+          # writes them as dist/<route>/index.html.
+          test -f portfolio/dist/index.html || test -f portfolio/dist/index/index.html \
+            || { echo "::error::missing page: index"; exit 1; }
+          for p in demos retractions method \
                    demo/fsvm-stepper demo/hilbert-codec demo/dilation-tree \
                    demo/zeck-residual demo/width-axis demo/sketch-entropy; do
             test -f "portfolio/dist/$p/index.html" \
