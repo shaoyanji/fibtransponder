@@ -1,5 +1,7 @@
 # fibtransponder
 
+![fibtransponder: a spiral-wound antenna broadcasting Fibonacci rings](banner.png)
+
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev/)
 [![Status](https://img.shields.io/badge/status-v0.1.1%20public%20surface%20sync-blue)](#status)
 [![Spec](https://img.shields.io/badge/spec-docs%2FSPEC.md-blue)](docs/SPEC.md)
