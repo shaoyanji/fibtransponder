@@ -136,8 +136,41 @@ If classifier benchmarks show allocs >0, something boxed. Find and fix.
 1. **No dedicated core flag for marker emission.** Classifier proxies via `FlagCheckpointCrossed`. See `classifier.go` TODO(spec).
 2. **Nil `ClassifierState` contract.** Currently returns minimal delta with no panic. Behavior beyond that is unspecified.
 3. **Promote/Demote/Tombstone/Materialize candidate flags** are not set by the classifier. They require queue state context (policy layer). The classifier reserves the flag bits but never emits them.
-4. **Frontier replay from op log.** `TestInvariantFrontierIsDerivable` tests the concept with a toy replay. Real replay needs the full op sequence and score history.
+4. **Frontier replay from op log.** `TestInvariantFrontierIsDerivable` tests the concept with a toy replay. Real replay needs the full op sequence and score history. A measurement probe (`epoch_probe_test.go`, see below) quantifies the caching win on a stand-in kernel — real replay semantics are still undefined and will shift the constants.
 5. **Sketch is informational.** The Zobrist sketch detects divergence but has no formal collision bound. Don't treat it as cryptographic.
+
+---
+
+## Epoch-Replay Probe (`epoch_probe_test.go`, landed 2026-11-19)
+
+Measurement-only attack on gap 4, ported from delphi's kg-zeck quotient-hashing probe (which **failed** its Kelly gate — BEAM startup ate the saving; the in-process regime here is what makes the same pattern pass).
+
+### Approach
+- **Zeckendorf block-carving**: greedy non-consecutive Fibonacci sizes over the op log, largest-first (10k ops → `[6765 2584 610 34 5 2]`). Same decomposition direction as kg-zeck — opposite of FSVM's coherency use (no-adjacent-1s as error signal).
+- **Block keys**: FNV-1a over `(epoch, position, op contents)`. **Quotient key**: FNV over `(epoch, ordered block keys)` — the frontier-state address. Identical op-window multiset → O(1) hit, no replay.
+- **Cached block delta**: a block's *net* effect — absolute final states for touched items + removals + tombstones. Apply order preserves append-only replay equivalence.
+- **Gate**: `save = T_full − (T_segmented(p) + T_snapshot/R) > 0`, snapshot amortised over R reads, swept over hit fraction p ∈ {25,50,75,90,100}% and R ∈ {1,4,16}.
+
+### Result (i5-8250U, 10k-op synthetic log, 80% ops on a 64-item hot set)
+
+| Path | Time | vs full |
+|------|------|---------|
+| full replay | 379.6µs (38 ns/op) | — |
+| segmented p=50/90/100 | ~124µs | −67% |
+| quotient hit | 63.9 ns | ~5940× |
+| epoch snapshot | 58.8µs | per R reads |
+
+**Gate PASSES at every (p, R) — including the worst case p=25%, R=1 (save ≈ +118µs).** Largest-first carving means the first cached prefix covers most of the log; delta apply compresses churn (1545 touched items vs 10000 ops, ~6.5× on this workload).
+
+### Caveats (do not over-read)
+- **Replay kernel is a stand-in.** Gap 4's real semantics (op sequence + score history) are undefined; the probe's map-ops+tombstones kernel is representative, not authoritative. Verdict should transfer; constants will move.
+- **Zero-churn workloads get nothing.** Every op on a distinct item → deltas don't compress → segmented ≈ full + hashing overhead. The win is workload-dependent (same `p`-miss lesson as kg-zeck).
+- **Quotient addressing is only correct under prefix-consistency** — enforced by `(epoch, position, ops)` keys. Any design that reorders or compacts the log must re-derive keys.
+- Test file only. Zero changes to FSVM/deltaqueue semantics or conformance invariants.
+
+### Open decisions (upstream, not code)
+1. **Host layer**: deltaqueue replay accelerator (probe's verdict supports this) vs a separate analytical "meaning cache" package.
+2. **Marker family**: whether a Fibonacci marker family doubles as the planned second-axis calibration variant, or stays a separate experiment.
 
 ---
 
@@ -156,6 +189,7 @@ If classifier benchmarks show allocs >0, something boxed. Find and fix.
 | `revalidate_test.go` | Predicate + ApplyDelta flow tests |
 | `conformance_test.go` | 8 invariant tests + 12 benchmark variants |
 | `spec_conformance_test.go` | Stub (content moved to conformance_test.go) |
+| `epoch_probe_test.go` | Zeckendorf epoch-replay probe: synthetic log, block/quotient keys, segmented-replay benchmark + save gate |
 | `heap_abi.go` | Heap runtime ABI (separate concern, not wired to classifier) |
 
 ---
@@ -195,3 +229,4 @@ If classifier benchmarks show allocs >0, something boxed. Find and fix.
 Generated: 2026-03-13 19:51 CET
 Session: full BUILD_ORDER completion (9/9 items)
 Commits: 1fcf2b2, 1661b6b, 381dd16, 65a6294, 19e347b
+Addendum: 2026-11-19 — epoch-replay probe section + files entry (measurement only, test-only)
