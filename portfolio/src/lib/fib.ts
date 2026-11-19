@@ -37,7 +37,7 @@
 /**
  * Base path for the wasm directory. This is a GitHub *project* page served at
  * /shaoyanji/fibtransponder/, so an absolute /wasm/... would 404. Astro exposes
- * base via import.meta.env.BASE_URL, which is '/' in dev and '/<repo>/' in the
+ * base via import.meta.env.BASE_URL, which is '/<repo>/' in dev and in the
  * deployed build.
  */
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');

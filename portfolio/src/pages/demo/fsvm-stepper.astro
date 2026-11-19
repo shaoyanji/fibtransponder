@@ -1,5 +1,6 @@
 ---
 import Demo from '../../layouts/Demo.astro';
+import { withBase } from '../../lib/url';
 ---
 
 <Demo slug="fsvm-stepper">
@@ -145,7 +146,7 @@ import Demo from '../../layouts/Demo.astro';
         1-run of length at least 2, 3 and 4, so the event sets are
         <em>nested</em>. The sketch is identical in all three, because the fold does not see width.
         That is the retraction the
-        <a href="/demo/width-axis">width demo</a> runs an assertion on.
+        <a href={withBase('/demo/width-axis')}>width demo</a> runs an assertion on.
       </p>
     </section>
 

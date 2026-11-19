@@ -1,5 +1,6 @@
 ---
 import type { Demo } from '../data/demos';
+import { withBase } from '../lib/url';
 
 interface Props {
   demo: Demo;
@@ -9,7 +10,7 @@ const { demo } = Astro.props;
 ---
 
 <li>
-  <a class="card panel" href={`/demo/${demo.slug}`}>
+  <a class="card panel" href={withBase(`/demo/${demo.slug}`)}>
     <p class="label card__kicker">
       {demo.kicker}
       {demo.needsWasm && <span class="card__wasm" title="Runs the repository's Go compiled to WebAssembly">wasm</span>}

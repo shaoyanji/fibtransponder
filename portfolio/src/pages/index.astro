@@ -4,6 +4,7 @@ import Metric from '../components/Metric.astro';
 import DemoCard from '../components/DemoCard.astro';
 import { demos } from '../data/demos';
 import { retractions } from '../data/retractions';
+import { withBase } from '../lib/url';
 
 const headline = [
   { value: '30', unit: 'ns/bit', label: 'Core step, 0 allocs', tone: 'verified' as const },
@@ -65,8 +66,8 @@ const sunburst = Array.from({ length: RAYS }, (_, i) => {
       </p>
 
       <div class="hero__cta">
-        <a class="btn btn--primary" href="/demos">See it running</a>
-        <a class="btn" href="/retractions">What I got wrong</a>
+        <a class="btn btn--primary" href={withBase('/demos')}>See it running</a>
+        <a class="btn" href={withBase('/retractions')}>What I got wrong</a>
       </div>
     </div>
 
@@ -118,7 +119,7 @@ const sunburst = Array.from({ length: RAYS }, (_, i) => {
 
   <p class="srcnote measure">
     All figures measured on AMD EPYC 7763, Go 1.25, and re-measured after the sketch fold fix.
-    <a href="/method#benchmarks">Method and caveats →</a>
+    <a href={withBase('/method#benchmarks')}>Method and caveats →</a>
   </p>
 
   <!-- ── The retractions, surfaced early ──────────────────────────────── -->
@@ -147,7 +148,7 @@ const sunburst = Array.from({ length: RAYS }, (_, i) => {
   </ul>
 
   <p class="measure">
-    <a href="/retractions">All {retractions.length} retractions, with the numbers that killed them →</a>
+    <a href={withBase('/retractions')}>All {retractions.length} retractions, with the numbers that killed them →</a>
   </p>
 
   <!-- ── Demos ────────────────────────────────────────────────────────── -->
