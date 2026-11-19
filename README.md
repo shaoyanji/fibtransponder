@@ -76,6 +76,7 @@ go test ./... -count=1
 - `REPORT_CORPUS.md` — evidence that seed-only calibration is falsified
 - `REPORT_STRUCTURAL.md` — evidence that structural calibration via width is demonstrated
 - `docs/BENCHMARKS.md` — baseline performance notes
+- `docs/NIXEVAL.md` — Nix eval epoch channels, CLI, and measured KG cache trial
 - `docs/RELEASE_CHECKLIST.md` — release hygiene checklist for this repo
 
 Historical or subsystem-specific documents:
