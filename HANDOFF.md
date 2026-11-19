@@ -136,7 +136,7 @@ If classifier benchmarks show allocs >0, something boxed. Find and fix.
 1. **No dedicated core flag for marker emission.** Classifier proxies via `FlagCheckpointCrossed`. See `classifier.go` TODO(spec).
 2. **Nil `ClassifierState` contract.** Currently returns minimal delta with no panic. Behavior beyond that is unspecified.
 3. **Promote/Demote/Tombstone/Materialize candidate flags** are not set by the classifier. They require queue state context (policy layer). The classifier reserves the flag bits but never emits them.
-4. **Frontier replay from op log.** `TestInvariantFrontierIsDerivable` tests the concept with a toy replay. Real replay needs the full op sequence and score history. A measurement probe (`epoch_probe_test.go`, see below) quantifies the caching win on a stand-in kernel — real replay semantics are still undefined and will shift the constants.
+4. **Frontier replay from op log.** `TestInvariantFrontierIsDerivable` tests the concept with a toy replay. `replay.go` now implements a provisional real replay (`ReplayMemOp`/`ReplayOps`/`ReplayLog`) — the probe's kernel, documented: `MemOp.Score` is a combined snapshot restored into `Recency` only; ops are post-gate so replay does no revalidation. The epoch cache (`epoch_cache.go`) builds segmented replay on top.
 5. **Sketch is informational.** The Zobrist sketch detects divergence but has no formal collision bound. Don't treat it as cryptographic.
 
 ---
@@ -168,8 +168,14 @@ Measurement-only attack on gap 4, ported from delphi's kg-zeck quotient-hashing 
 - **Quotient addressing is only correct under prefix-consistency** — enforced by `(epoch, position, ops)` keys. Any design that reorders or compacts the log must re-derive keys.
 - Test file only. Zero changes to FSVM/deltaqueue semantics or conformance invariants.
 
+### Productionized (2026-11-19)
+Decision 1 resolved in favour of deltaqueue: the probe machinery landed as `replay.go` + `epoch_cache.go` (`ReplayLog`, `EpochCache.Replay`, `Quotient`/`Snapshot`/`StoreSnapshot`, `ComputeBlockDelta`), with equivalence tests (`replay_test.go`, `epoch_cache_test.go`). Two measured lessons beyond the probe numbers:
+
+- **Hash cost can eat the win.** Byte-wise FNV over the log per call (~750µs at 10k ops) was *slower than full replay* (~364µs). Keys now use a splitmix-style word mix (~one mix per op): `EpochCache.Replay` warm = 168µs vs full 375µs (−55%) including hashing.
+- **Content-complete addressing is required.** A (pos, len, endpoint-ticks) identity shortcut was rejected: interior ops can differ under identical endpoints and multiple MemOps share one Tick. The block fold must also be order-sensitive (same-tick op swaps produce different deltas).
+
 ### Open decisions (upstream, not code)
-1. **Host layer**: deltaqueue replay accelerator (probe's verdict supports this) vs a separate analytical "meaning cache" package.
+1. ~~**Host layer**~~ resolved: deltaqueue replay accelerator (`EpochCache`).
 2. **Marker family**: whether a Fibonacci marker family doubles as the planned second-axis calibration variant, or stays a separate experiment.
 
 ---
@@ -189,7 +195,11 @@ Measurement-only attack on gap 4, ported from delphi's kg-zeck quotient-hashing 
 | `revalidate_test.go` | Predicate + ApplyDelta flow tests |
 | `conformance_test.go` | 8 invariant tests + 12 benchmark variants |
 | `spec_conformance_test.go` | Stub (content moved to conformance_test.go) |
-| `epoch_probe_test.go` | Zeckendorf epoch-replay probe: synthetic log, block/quotient keys, segmented-replay benchmark + save gate |
+| `epoch_probe_test.go` | Zeckendorf epoch-replay probe: synthetic log, segmented-replay benchmark + save gate over the production machinery |
+| `replay.go` | Provisional canonical replay: `ReplayMemOp`/`ReplayOps`/`ReplayLog`, `SnapshotFrontier` |
+| `replay_test.go` | Per-kind replay semantics, guards, determinism, tombstone-readd |
+| `epoch_cache.go` | `EpochCache`: Zeckendorf blocks, word-mixed block/quotient keys, `BlockDelta`, quotient snapshots |
+| `epoch_cache_test.go` | Segmented==full equivalence, partial cache, key/order sensitivity, snapshot round-trip |
 | `heap_abi.go` | Heap runtime ABI (separate concern, not wired to classifier) |
 
 ---
@@ -230,3 +240,4 @@ Generated: 2026-03-13 19:51 CET
 Session: full BUILD_ORDER completion (9/9 items)
 Commits: 1fcf2b2, 1661b6b, 381dd16, 65a6294, 19e347b
 Addendum: 2026-11-19 — epoch-replay probe section + files entry (measurement only, test-only)
+Addendum: 2026-11-19 — probe productionized: replay.go + epoch_cache.go + tests; gap 4 updated
