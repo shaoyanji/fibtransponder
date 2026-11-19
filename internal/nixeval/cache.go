@@ -130,7 +130,7 @@ func (w *worker) leap(ctx context.Context, before tree, reason string) (manifest
 	if before.All != after.All {
 		return manifest{}, errors.New("inputs changed during full evaluation; retry")
 	}
-	epoch := digest([]any{after.Core, after.Eligible})
+	epoch := digest([]any{after.Core, after.Eligible, rawSHA(base)})
 	return manifest{Epoch: epoch, CoreKey: after.Core, Files: after.Eligible, Base: base, Status: Status{LeapReason: reason}}, nil
 }
 

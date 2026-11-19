@@ -28,7 +28,8 @@ defines the tracked files. Untracked files do not contribute. Initialized
 gitlinks are hashed recursively; uninitialized gitlinks use a sentinel, not the
 parent repository's contents. Symlinks contribute their link text.
 
-The epoch identity is a SHA256 digest of the core key and eligible-file hashes.
+The epoch identity is a SHA256 digest of the core key, eligible-file hashes, and
+the full evaluation result's SHA256.
 It is content-addressed, so an explicit leap on unchanged inputs can retain the
 same epoch identity even though it runs a new full evaluation.
 

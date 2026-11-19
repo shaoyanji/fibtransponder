@@ -18,6 +18,43 @@ import (
 
 var background = context.Background()
 
+type evaluatorFunc func(context.Context, string, string) (json.RawMessage, error)
+
+func (f evaluatorFunc) Eval(ctx context.Context, repo, attr string) (json.RawMessage, error) {
+	return f(ctx, repo, attr)
+}
+
+func TestLeapReturnsFreshBaseWithoutFileChanges(t *testing.T) {
+	x := newFixture(t, 10)
+	results := []json.RawMessage{json.RawMessage(`{"value":"first"}`), json.RawMessage(`{"value":"second"}`), json.RawMessage(`{}`)}
+	calls := 0
+	c := x.c
+	c.Evaluator = evaluatorFunc(func(context.Context, string, string) (json.RawMessage, error) {
+		result := results[calls]
+		calls++
+		return result, nil
+	})
+	if err := x.e.Register("impure", c); err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range results {
+		var got json.RawMessage
+		var err error
+		if i == 0 {
+			got, err = x.e.Get(background, "impure")
+		} else {
+			got, err = x.e.Leap(background, "impure")
+		}
+		if err != nil || string(got) != string(want) {
+			t.Fatalf("evaluation %d: got %s, error %v; want %s", i+1, got, err, want)
+		}
+		cached, err := x.e.Get(background, "impure")
+		if err != nil || string(cached) != string(want) || calls != i+1 {
+			t.Fatalf("cached evaluation %d: got %s, error %v, calls %d; want %s", i+1, cached, err, calls, want)
+		}
+	}
+}
+
 type fakeEvaluator struct {
 	calls atomic.Int32
 	hook  func(context.Context) error
