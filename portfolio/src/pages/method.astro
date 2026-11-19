@@ -1,6 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import { demos } from '../data/demos';
+import { withBase } from '../lib/url';
 
 interface Bench {
   name: string;
@@ -212,12 +213,12 @@ npm run build      # → portfolio/dist</code></pre>
         <strong>No collision guarantee on the sketch.</strong> It is a parity function over a
         128-symbol alphabet, so ~1.5% of random streams of length 1–200 collide, and an all-zero
         stream yields only 2 distinct values at any length. See the
-        <a href="/demo/sketch-entropy">sketch entropy demo</a>.
+        <a href={withBase('/demo/sketch-entropy')}>sketch entropy demo</a>.
       </li>
       <li>
         <strong>Prose-versus-code sensitivity is partly an encoding artefact.</strong> The width-2
         and width-3 rates are driven by which ASCII bytes contain long one-runs, and Go source is
-        dense in exactly those characters. See <a href="/demo/width-axis">the width demo</a>.
+        dense in exactly those characters. See <a href={withBase('/demo/width-axis')}>the width demo</a>.
       </li>
       <li>
         <strong>The threshold axis is untested, not proven independent.</strong> No marker fires on
@@ -227,7 +228,7 @@ npm run build      # → portfolio/dist</code></pre>
       <li>
         <strong>The image codec mostly expands its input.</strong> A Hilbert curve is fractal, so
         it crosses a screen-space edge O(n^1.585) to O(n²) times and run-length coding cannot keep
-        up. This was measured, not assumed. See <a href="/demo/hilbert-codec">the codec demo</a>.
+        up. This was measured, not assumed. See <a href={withBase('/demo/hilbert-codec')}>the codec demo</a>.
       </li>
       <li>
         <strong>Non-ASCII input is handled inconsistently between demos.</strong> The FSVM demos
@@ -250,7 +251,7 @@ npm run build      # → portfolio/dist</code></pre>
       {
         demos.map((d) => (
           <li>
-            <a href={`/demo/${d.slug}`}>{d.title}</a>
+            <a href={withBase(`/demo/${d.slug}`)}>{d.title}</a>
             <span>{d.blurb}</span>
           </li>
         ))

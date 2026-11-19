@@ -1,5 +1,7 @@
 ---
-const path = Astro.url.pathname;
+import { stripBase, withBase } from '../lib/url';
+
+const path = stripBase(Astro.url.pathname);
 
 interface NavItem {
   href: string;
@@ -19,7 +21,7 @@ const isActive = (href: string) =>
 
 <header class="site-head">
   <div class="shell bar">
-    <a class="brand" href="/">
+    <a class="brand" href={withBase('/')}>
       <span class="brand__mark" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6">
           <path d="M2 18 L7 18 L7 12 L12 12 L12 7 L17 7 L17 2 L22 2" stroke-linecap="square" />
@@ -37,7 +39,7 @@ const isActive = (href: string) =>
         {
           items.map((item) => (
             <li>
-              <a href={item.href} aria-current={isActive(item.href) ? 'page' : undefined}>
+              <a href={withBase(item.href)} aria-current={isActive(item.href) ? 'page' : undefined}>
                 {item.label}
               </a>
             </li>

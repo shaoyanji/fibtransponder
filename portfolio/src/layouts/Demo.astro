@@ -2,6 +2,7 @@
 import Base from './Base.astro';
 import type { Demo } from '../data/demos';
 import { demos } from '../data/demos';
+import { withBase } from '../lib/url';
 
 interface Props {
   slug: string;
@@ -24,7 +25,7 @@ const next = demos[(idx + 1) % demos.length];
 >
   <header class="demo-head">
     <p class="crumbs">
-      <a href="/demos">Demos</a>
+      <a href={withBase('/demos')}>Demos</a>
       <span aria-hidden="true"> / </span>
       <span>{demo.title}</span>
     </p>
@@ -35,11 +36,11 @@ const next = demos[(idx + 1) % demos.length];
   <slot />
 
   <nav class="pager" aria-label="Demo navigation">
-    <a class="pager__link panel" href={`/demo/${next.slug}`}>
+    <a class="pager__link panel" href={withBase(`/demo/${next.slug}`)}>
       <span class="label">Next</span>
       <span class="pager__title">{next.title}</span>
     </a>
-    <a class="pager__link panel" href="/demos">
+    <a class="pager__link panel" href={withBase('/demos')}>
       <span class="label">All</span>
       <span class="pager__title">Back to the index</span>
     </a>
@@ -51,7 +52,7 @@ const next = demos[(idx + 1) % demos.length];
       {
         others.map((d) => (
           <li>
-            <a href={`/demo/${d.slug}`}>
+            <a href={withBase(`/demo/${d.slug}`)}>
               <span class="also__title">{d.title}</span>
               <span class="also__blurb">{d.blurb}</span>
             </a>
