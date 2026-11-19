@@ -122,14 +122,16 @@ func (w *worker) leap(ctx context.Context, before tree, reason string) (manifest
 	if !json.Valid(base) {
 		return manifest{}, errors.New("evaluator returned invalid JSON")
 	}
-	w.base = base
-	after, err := w.scanRepo(ctx, w.config.Repo, true, true)
+	candidate := *w
+	candidate.base = base
+	after, err := candidate.scanRepo(ctx, w.config.Repo, true, true)
 	if err != nil {
 		return manifest{}, err
 	}
 	if before.All != after.All {
 		return manifest{}, errors.New("inputs changed during full evaluation; retry")
 	}
+	w.base = base
 	epoch := digest([]any{after.Core, after.Eligible, rawSHA(base)})
 	return manifest{Epoch: epoch, CoreKey: after.Core, Files: after.Eligible, Base: base, Status: Status{LeapReason: reason}}, nil
 }

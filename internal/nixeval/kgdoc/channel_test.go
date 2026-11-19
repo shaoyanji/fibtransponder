@@ -19,6 +19,53 @@ func (f evaluatorFunc) Eval(ctx context.Context, repo, attr string) (json.RawMes
 	return f(ctx, repo, attr)
 }
 
+func TestChannelRetriesRejectedColdGraph(t *testing.T) {
+	for _, op := range []string{"get", "leap"} {
+		for _, invalid := range []string{`{}`, `null`, `{`} {
+			t.Run(op+"/"+invalid, func(t *testing.T) {
+				repo := t.TempDir()
+				cmd := exec.Command("git", "init", "-q")
+				cmd.Dir = repo
+				if err := cmd.Run(); err != nil {
+					t.Fatal(err)
+				}
+				calls := 0
+				eval := evaluatorFunc(func(context.Context, string, string) (json.RawMessage, error) {
+					calls++
+					if calls == 1 {
+						return json.RawMessage(invalid), nil
+					}
+					return fixture(), nil
+				})
+				e := nixeval.New(t.TempDir())
+				defer e.Close()
+				if err := e.Register("kg", nixeval.Channel{Repo: repo, Attr: ".#graph", Eligible: func(string) bool { return true }, Fragmenter: Fragmenter{}, Evaluator: eval}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := e.Get(context.Background(), "kg"); err == nil {
+					t.Fatal("invalid graph accepted")
+				}
+				status, err := e.Status(context.Background(), "kg")
+				if err != nil || status.Epoch != "" {
+					t.Fatal("failed cold eval persisted epoch", status, err)
+				}
+				var got json.RawMessage
+				if op == "get" {
+					got, err = e.Get(context.Background(), "kg")
+				} else {
+					got, err = e.Leap(context.Background(), "kg")
+				}
+				if err != nil || string(got) != string(fixture()) || calls != 2 {
+					t.Fatalf("retry: error %v, calls %d, graph %s", err, calls, got)
+				}
+				if _, err := e.Get(context.Background(), "kg"); err != nil || calls != 2 {
+					t.Fatalf("cached retry: error %v, calls %d", err, calls)
+				}
+			})
+		}
+	}
+}
+
 func TestChannelLastCitationAndTracking(t *testing.T) {
 	repo := t.TempDir()
 	write := func(file, content string) {
