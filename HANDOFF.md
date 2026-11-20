@@ -180,6 +180,23 @@ Decision 1 resolved in favour of deltaqueue: the probe machinery landed as `repl
 
 ---
 
+## Nix eval epoch channels
+
+`internal/nixeval` applies the segmented-cache model to full Nix evaluations and
+file-local fragments. Each named channel has an owning goroutine, a persisted
+epoch/log, segment and quotient caches, and context-aware requests.
+`internal/nixeval/kgdoc` ports nixconfig's document projection; `cmd/nixeval`
+provides `graph`, `leap`, `status`, and `parity`.
+
+See [`docs/NIXEVAL.md`](docs/NIXEVAL.md) for the model, differences from Elixir,
+CLI usage, and `scripts/nixeval-trial.sh`. On the Intel Xeon VM, five-run medians
+were 78.415 ms for an incremental doc edit and 43.177 ms for a warm hit, versus
+533.105 ms and 20.528 ms for the default backend's HEAD+diff dirty/warm paths.
+All 60 steps across five 12-doc walks passed parity. This does not change the
+FSVM or deltaqueue replay semantics.
+
+---
+
 ## Files Quick Reference
 
 | File | Purpose |
